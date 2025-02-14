@@ -1,4 +1,5 @@
 [deps]
 pandas = ""
+python = ""
 astropy = "=7.0"
 astroquery = "=0.4.9"
