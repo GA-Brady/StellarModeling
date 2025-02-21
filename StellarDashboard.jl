@@ -42,7 +42,8 @@ Goals:
 # ╔═╡ 1d4c2b75-2c10-4aad-ac8a-9cccd53e715f
 query = """
 SELECT TOP 10 ra, dec
-FROM PhotoObj
+FROM SpecObj
+WHERE class = 'STAR'
 """
 
 # ╔═╡ 1ad89925-9707-497f-b682-9f509910d361
