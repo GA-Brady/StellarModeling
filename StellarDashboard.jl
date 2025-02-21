@@ -6,18 +6,21 @@ using InteractiveUtils
 
 # ╔═╡ f33f46eb-9909-4ef4-b69f-0b67c24caad0
 begin
-	using Pkg
+	ENV["JULIA_PYTHONCALL_EXE"] = "/storage/group/RISE/classroom/astro_416/julia_env/bin/python" 
+	ENV["JULIA_CONDAPKG_BACKEND"] = "Current"
+	ENV["JULIA_CONDAPKG_EXE"] = "/storage/icds/RISE/sw8/anaconda-2023.09-0/bin/conda" 
+	ENV["PYTHONPATH"] = joinpath(homedir(),".local/lib/python3.11/site-packages/")
+
 	using PyCall
-	env_path = joinpath(@__DIR__, "..", "deps", "py_env") 
-	ENV["PYTHON"] = joinpath(env_path, "bin", "python3.13")
-	ENV["PYTHONPATH"] = joinpath(env_path, "lib/python3.1/site-packages")
-	# Editing these to make junk work
-	ENV["JULIA_PYTHONCALL_EXE"] = joinpath(env_path, "bin", "python3.13")
-	Pkg.build("Pycall")
+  	astroquery = pyimport("astroquery")
+	sdss       = pyimport("astroquery.sdss")
+  	astropy    = pyimport("astropy")
+	_SDSS = sdss.SDSSClass()
 end
 
 # ╔═╡ 9344642b-f279-4934-9241-488bf740377f
 begin
+	astroquery
 	# importing packages
 	using DataFrames
 end
@@ -36,8 +39,11 @@ Goals:
 - fill in the rest later...
 =#
 
-# ╔═╡ e3cad56f-d992-424e-b0f3-c5ee2024f48d
-astropy = pyimport("astropy")
+# ╔═╡ 1d4c2b75-2c10-4aad-ac8a-9cccd53e715f
+query = """
+SELECT TOP 10 ra, dec
+FROM PhotoObj
+"""
 
 # ╔═╡ 1ad89925-9707-497f-b682-9f509910d361
 function dec_str_to_deg(s::AbstractString)
@@ -55,19 +61,18 @@ function ra_str_to_hours(s::AbstractString)
 	ra_hours = h+(m+s/60)/60
 end;
 
-# ╔═╡ fcc9871f-62b8-459b-a7d0-4b5a18fb50c5
-# Generating a test star for searching the SDSS database
-begin
-	ra_herc_72 = ra_str_to_hours("17 20 39.6");
-	dec_herc_72 = dec_str_to_deg("32 28 04");
-	show("RA: $ra_herc_72, DEC: $dec_herc_72")
+# ╔═╡ 3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
+function j2p_string(x::AbstractString)
+	return pyimport("builtins").str(x)
 end
+
+# ╔═╡ 898652bb-2250-4b87-90ae-d96f34cf6ce2
+result = _SDSS.query_sql(j2p_string(query))
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
-Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 
 [compat]
@@ -81,7 +86,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "9218e7a15898a57ff8ea211444f2bb442f858b41"
+project_hash = "c37b38ed55c60dd8b4ef485eb85697f54dc4a9d1"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -211,16 +216,6 @@ deps = ["Artifacts", "LibSSH2_jll", "Libdl", "MbedTLS_jll", "Zlib_jll", "nghttp2
 uuid = "deac9b47-8bc7-5906-a0fe-35ac56dc84c0"
 version = "8.6.0+0"
 
-[[deps.LibGit2]]
-deps = ["Base64", "LibGit2_jll", "NetworkOptions", "Printf", "SHA"]
-uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
-version = "1.11.0"
-
-[[deps.LibGit2_jll]]
-deps = ["Artifacts", "LibSSH2_jll", "Libdl", "MbedTLS_jll"]
-uuid = "e37daf67-58a4-590a-8e99-b0245dd2ffc5"
-version = "1.7.2+0"
-
 [[deps.LibSSH2_jll]]
 deps = ["Artifacts", "Libdl", "MbedTLS_jll"]
 uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
@@ -233,10 +228,6 @@ version = "1.11.0"
 [[deps.LinearAlgebra]]
 deps = ["Libdl", "OpenBLAS_jll", "libblastrampoline_jll"]
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-version = "1.11.0"
-
-[[deps.Logging]]
-uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 version = "1.11.0"
 
 [[deps.MacroTools]]
@@ -287,17 +278,6 @@ deps = ["Dates", "PrecompileTools", "UUIDs"]
 git-tree-sha1 = "8489905bcdbcfac64d1daa51ca07c0d8f0283821"
 uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 version = "2.8.1"
-
-[[deps.Pkg]]
-deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "Random", "SHA", "TOML", "Tar", "UUIDs", "p7zip_jll"]
-uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
-version = "1.11.0"
-
-    [deps.Pkg.extensions]
-    REPLExt = "REPL"
-
-    [deps.Pkg.weakdeps]
-    REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
 [[deps.PooledArrays]]
 deps = ["DataAPI", "Future"]
@@ -399,11 +379,6 @@ git-tree-sha1 = "598cd7c1f68d1e205689b1c2fe65a9f85846f297"
 uuid = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
 version = "1.12.0"
 
-[[deps.Tar]]
-deps = ["ArgTools", "SHA"]
-uuid = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
-version = "1.10.0"
-
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]
 uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
@@ -432,20 +407,16 @@ version = "5.11.0+0"
 deps = ["Artifacts", "Libdl"]
 uuid = "8e850ede-7688-5339-a07c-302acd2aaf8d"
 version = "1.59.0+0"
-
-[[deps.p7zip_jll]]
-deps = ["Artifacts", "Libdl"]
-uuid = "3f19e933-33d8-53b3-aaab-bd5110c3b7a0"
-version = "17.4.0+2"
 """
 
 # ╔═╡ Cell order:
 # ╠═3a9c8be6-e990-11ef-044c-57e8b712c0fb
-# ╠═f33f46eb-9909-4ef4-b69f-0b67c24caad0
-# ╠═e3cad56f-d992-424e-b0f3-c5ee2024f48d
+# ╠═1d4c2b75-2c10-4aad-ac8a-9cccd53e715f
+# ╠═898652bb-2250-4b87-90ae-d96f34cf6ce2
 # ╠═1ad89925-9707-497f-b682-9f509910d361
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
-# ╠═fcc9871f-62b8-459b-a7d0-4b5a18fb50c5
 # ╠═9344642b-f279-4934-9241-488bf740377f
+# ╠═f33f46eb-9909-4ef4-b69f-0b67c24caad0
+# ╠═3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
