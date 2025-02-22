@@ -15,8 +15,9 @@ begin
   	astroquery = pyimport("astroquery")
 	sdss       = pyimport("astroquery.sdss")
   	astropy    = pyimport("astropy")
-	_coords     = pyimport("astropy.coordinates")
+	_coords    = pyimport("astropy.coordinates")
 	pd         = pyimport("pandas")
+	pyFITS     = pyimport("astropy.io.fits")
 	# _getattr   = pyimport("builtins").getattr
 	_t         = astropy.table
 	_u         = astropy.units
@@ -50,6 +51,9 @@ SELECT TOP 1 ra, dec
 FROM SpecObj
 WHERE class = 'STAR'
 """
+
+# ╔═╡ a3244e07-211b-449a-bfcb-927985b65b2f
+
 
 # ╔═╡ 1ad89925-9707-497f-b682-9f509910d361
 function dec_str_to_deg(s::AbstractString)
@@ -89,6 +93,12 @@ end
 
 # ╔═╡ a1d52486-a5a9-4138-b56b-6c4129090b73
 spectrum = _SDSS.get_spectra(coordinates = result_sky_coords)
+
+# ╔═╡ d64e34dc-b0ea-4ea5-bee7-d19c06938276
+begin
+	pyHDU_primary = spectrum[1]
+	header = pyHDU_primary["header"]
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -437,6 +447,8 @@ version = "1.59.0+0"
 # ╠═ca86a824-a985-4ebe-b80b-5b64505aa037
 # ╠═906a8593-91f9-4947-9c8a-ea28bbaa671f
 # ╠═a1d52486-a5a9-4138-b56b-6c4129090b73
+# ╠═d64e34dc-b0ea-4ea5-bee7-d19c06938276
+# ╠═a3244e07-211b-449a-bfcb-927985b65b2f
 # ╠═1ad89925-9707-497f-b682-9f509910d361
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
 # ╠═9344642b-f279-4934-9241-488bf740377f
