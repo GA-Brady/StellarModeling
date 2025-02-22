@@ -15,7 +15,12 @@ begin
   	astroquery = pyimport("astroquery")
 	sdss       = pyimport("astroquery.sdss")
   	astropy    = pyimport("astropy")
-	_SDSS = sdss.SDSSClass()
+	_coords     = pyimport("astropy.coordinates")
+	pd         = pyimport("pandas")
+	# _getattr   = pyimport("builtins").getattr
+	_t         = astropy.table
+	_u         = astropy.units
+	_SDSS      = sdss.SDSS
 end
 
 # ╔═╡ 9344642b-f279-4934-9241-488bf740377f
@@ -41,7 +46,7 @@ Goals:
 
 # ╔═╡ 1d4c2b75-2c10-4aad-ac8a-9cccd53e715f
 query = """
-SELECT TOP 10 ra, dec
+SELECT TOP 1 ra, dec
 FROM SpecObj
 WHERE class = 'STAR'
 """
@@ -69,6 +74,21 @@ end
 
 # ╔═╡ 898652bb-2250-4b87-90ae-d96f34cf6ce2
 result = _SDSS.query_sql(j2p_string(query))
+
+# ╔═╡ ca86a824-a985-4ebe-b80b-5b64505aa037
+begin
+	pydf_result = result.to_pandas()
+	py_ra_col   = pydf_result["ra"]
+	py_dec_col  = pydf_result["dec"]
+end
+
+# ╔═╡ 906a8593-91f9-4947-9c8a-ea28bbaa671f
+begin
+	result_sky_coords = _coords.SkyCoord(py_ra_col, py_dec_col, unit="deg")
+end
+
+# ╔═╡ a1d52486-a5a9-4138-b56b-6c4129090b73
+spectrum = _SDSS.get_spectra(coordinates = result_sky_coords)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -414,6 +434,9 @@ version = "1.59.0+0"
 # ╠═3a9c8be6-e990-11ef-044c-57e8b712c0fb
 # ╠═1d4c2b75-2c10-4aad-ac8a-9cccd53e715f
 # ╠═898652bb-2250-4b87-90ae-d96f34cf6ce2
+# ╠═ca86a824-a985-4ebe-b80b-5b64505aa037
+# ╠═906a8593-91f9-4947-9c8a-ea28bbaa671f
+# ╠═a1d52486-a5a9-4138-b56b-6c4129090b73
 # ╠═1ad89925-9707-497f-b682-9f509910d361
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
 # ╠═9344642b-f279-4934-9241-488bf740377f
