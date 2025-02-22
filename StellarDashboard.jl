@@ -53,7 +53,13 @@ WHERE class = 'STAR'
 """
 
 # ╔═╡ a3244e07-211b-449a-bfcb-927985b65b2f
+"""
+After getting the spectrum from Astroquery, the Astropy.io.FITS object needs to be converted into a Julia object. 
 
+Is it better to save the FITS file into a data directory and use it later?
+
+Or transfer directly from pyFITS to jlFITS?
+"""
 
 # ╔═╡ 1ad89925-9707-497f-b682-9f509910d361
 function dec_str_to_deg(s::AbstractString)
@@ -93,11 +99,16 @@ end
 
 # ╔═╡ a1d52486-a5a9-4138-b56b-6c4129090b73
 spectrum = _SDSS.get_spectra(coordinates = result_sky_coords)
+# want to save this directly to a file, then access in Julia to stop usign PyCall
+# plus then spectra need only be downloaded once / analysis
+# create some garbage clean-up for throwing out spectra 
 
 # ╔═╡ d64e34dc-b0ea-4ea5-bee7-d19c06938276
 begin
 	pyHDU_primary = spectrum[1]
-	header = pyHDU_primary["header"]
+	header = pyHDU_primary["header"] 
+	# check header data for data quality flags
+	# check for anything out of the ordinary which might make data unusable
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
