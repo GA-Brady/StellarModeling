@@ -4,6 +4,21 @@
 using Markdown
 using InteractiveUtils
 
+# ╔═╡ 3a9c8be6-e990-11ef-044c-57e8b712c0fb
+#=
+Garrett Brady - gab5654@psu.edu
+
+Start: Feb 12th, 2025
+
+This notebook is the dashboard project for ASTRO-416
+Goals: 
+- Ingest SDSS DR17 MaSTAR data
+	- Focus on Star Clusters
+		- Write good ADQL queries for SDSS to get cleaner data
+- fill in the rest later...
+=#
+using FilePaths
+
 # ╔═╡ f33f46eb-9909-4ef4-b69f-0b67c24caad0
 begin
 	ENV["JULIA_PYTHONCALL_EXE"] = "/storage/group/RISE/classroom/astro_416/julia_env/bin/python" 
@@ -18,7 +33,9 @@ begin
 	_coords    = pyimport("astropy.coordinates")
 	pd         = pyimport("pandas")
 	pyFITS     = pyimport("astropy.io.fits")
-	# _getattr   = pyimport("builtins").getattr
+	# ---- #
+	aPyUtil = pyimport("astropy.utils.data")
+	_aPyConf   = aPyUtil.conf
 	_t         = astropy.table
 	_u         = astropy.units
 	_SDSS      = sdss.SDSS
@@ -31,20 +48,6 @@ begin
 	using DataFrames
 end
 
-# ╔═╡ 3a9c8be6-e990-11ef-044c-57e8b712c0fb
-#=
-Garrett Brady - gab5654@psu.edu
-
-Start: Feb 12th, 2025
-
-This notebook is the dashboard project for ASTRO-416
-Goals: 
-- Ingest SDSS DR17 MaSTAR data
-	- Focus on Star Clusters
-		- Write good ADQL queries for SDSS to get cleaner data
-- fill in the rest later...
-=#
-
 # ╔═╡ 1d4c2b75-2c10-4aad-ac8a-9cccd53e715f
 query = """
 SELECT TOP 1 ra, dec
@@ -53,7 +56,17 @@ WHERE class = 'STAR'
 """
 
 # ╔═╡ cba4adff-f623-4fa3-949f-9a27d6fa69aa
-
+# Initalization Junk
+begin
+	data_dir = joinpath(pwd(), "data_dir")
+	if isdir(data_dir) == false
+		mkdir(data_dir)
+	end
+	astropy_cache_path = joinpath(pwd(), "cache", "astropy")
+	if isdir(astropy_cache_path) == false
+		mkpath(astropy_cache_path)
+	end
+end
 
 # ╔═╡ a3244e07-211b-449a-bfcb-927985b65b2f
 """
@@ -81,8 +94,15 @@ function ra_str_to_hours(s::AbstractString)
 end;
 
 # ╔═╡ 3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
+begin
 function j2p_string(x::AbstractString)
 	return pyimport("builtins").str(x)
+end
+function j2p_path(julia_path::String)
+    # Normalize the path for macOS and Unix systems
+    norm_path = normpath(julia_path)
+    return string(norm_path)
+end
 end
 
 # ╔═╡ 898652bb-2250-4b87-90ae-d96f34cf6ce2
@@ -110,7 +130,12 @@ spectrum = _SDSS.get_spectra(coordinates = result_sky_coords)
 # ╔═╡ d64e34dc-b0ea-4ea5-bee7-d19c06938276
 begin
 	pyHDU_primary = spectrum[1]
-	header = pyHDU_primary["header"] 
+	header = pyHDU_primary.header
+	#=
+	name = header.get("NAME")
+	show(name)
+	=#
+	
 	# check header data for data quality flags
 	# check for anything out of the ordinary which might make data unusable
 end
@@ -119,10 +144,12 @@ end
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+FilePaths = "8fc22ac5-c921-52a6-82fd-178b2807b824"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 
 [compat]
 DataFrames = "~1.7.0"
+FilePaths = "~0.8.3"
 PyCall = "~1.96.4"
 """
 
@@ -132,7 +159,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "c37b38ed55c60dd8b4ef485eb85697f54dc4a9d1"
+project_hash = "09d053a533a71a2e70ff9d68696ac8bad96acfcc"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -203,6 +230,26 @@ version = "1.11.0"
 deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 version = "1.6.0"
+
+[[deps.FilePaths]]
+deps = ["FilePathsBase", "MacroTools", "Reexport", "Requires"]
+git-tree-sha1 = "919d9412dbf53a2e6fe74af62a73ceed0bce0629"
+uuid = "8fc22ac5-c921-52a6-82fd-178b2807b824"
+version = "0.8.3"
+
+[[deps.FilePathsBase]]
+deps = ["Compat", "Dates"]
+git-tree-sha1 = "2ec417fc319faa2d768621085cc1feebbdee686b"
+uuid = "48062228-2e41-5def-b9a4-89aafe57970f"
+version = "0.9.23"
+
+    [deps.FilePathsBase.extensions]
+    FilePathsBaseMmapExt = "Mmap"
+    FilePathsBaseTestExt = "Test"
+
+    [deps.FilePathsBase.weakdeps]
+    Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
+    Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [[deps.FileWatching]]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
@@ -369,6 +416,12 @@ version = "1.11.0"
 git-tree-sha1 = "45e428421666073eab6f2da5c9d310d99bb12f9b"
 uuid = "189a3867-3050-52da-a836-e630ba90ab69"
 version = "1.2.2"
+
+[[deps.Requires]]
+deps = ["UUIDs"]
+git-tree-sha1 = "838a3a4188e2ded87a4f9f184b4b0d78a1e91cb7"
+uuid = "ae029012-a4dd-5104-9daa-d747884805df"
+version = "1.3.0"
 
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
