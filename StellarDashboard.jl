@@ -52,6 +52,9 @@ FROM SpecObj
 WHERE class = 'STAR'
 """
 
+# ╔═╡ cba4adff-f623-4fa3-949f-9a27d6fa69aa
+
+
 # ╔═╡ a3244e07-211b-449a-bfcb-927985b65b2f
 """
 After getting the spectrum from Astroquery, the Astropy.io.FITS object needs to be converted into a Julia object. 
@@ -100,6 +103,7 @@ end
 # ╔═╡ a1d52486-a5a9-4138-b56b-6c4129090b73
 spectrum = _SDSS.get_spectra(coordinates = result_sky_coords)
 # want to save this directly to a file, then access in Julia to stop usign PyCall
+# Astroquery.download_products() such and such to data_dir (needs defined)
 # plus then spectra need only be downloaded once / analysis
 # create some garbage clean-up for throwing out spectra 
 
@@ -459,6 +463,7 @@ version = "1.59.0+0"
 # ╠═906a8593-91f9-4947-9c8a-ea28bbaa671f
 # ╠═a1d52486-a5a9-4138-b56b-6c4129090b73
 # ╠═d64e34dc-b0ea-4ea5-bee7-d19c06938276
+# ╠═cba4adff-f623-4fa3-949f-9a27d6fa69aa
 # ╠═a3244e07-211b-449a-bfcb-927985b65b2f
 # ╠═1ad89925-9707-497f-b682-9f509910d361
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
