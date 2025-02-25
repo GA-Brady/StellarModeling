@@ -131,24 +131,40 @@ spectrum = _SDSS.get_spectra(coordinates = result_sky_coords)
 begin
 	pyHDU_primary = spectrum[1]
 	header = pyHDU_primary.header
-	#=
-	name = header.get("NAME")
-	show(name)
-	=#
-	
 	# check header data for data quality flags
 	# check for anything out of the ordinary which might make data unusable
+end
+
+# ╔═╡ 3cd2a32e-ce62-4063-bc4d-8a9f6bf2874b
+begin
+	spectra_1 = spectrum[6]
+	spectra_1.header
+end
+
+# ╔═╡ ca08da4b-b6c7-40ca-80be-27222b2e16ee
+begin
+	filname = joinpath(data_dir, spectra_1.header.get(j2p_string("FILENAME")))
+	spectra_1.writeto(filname)
+end
+
+# ╔═╡ 235341f2-0102-490e-9d53-f011de618c7d
+begin
+	using FITSIO
+	f = FITS(filname)
+	f[2].read
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+FITSIO = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
 FilePaths = "8fc22ac5-c921-52a6-82fd-178b2807b824"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 
 [compat]
 DataFrames = "~1.7.0"
+FITSIO = "~0.17.4"
 FilePaths = "~0.8.3"
 PyCall = "~1.96.4"
 """
@@ -159,7 +175,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "09d053a533a71a2e70ff9d68696ac8bad96acfcc"
+project_hash = "b6cf348748489b46ea39f19188390a652771130b"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -172,6 +188,18 @@ version = "1.11.0"
 [[deps.Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 version = "1.11.0"
+
+[[deps.CFITSIO]]
+deps = ["CFITSIO_jll"]
+git-tree-sha1 = "fc0abb338eb8d90bc186ccf0a47c90825952c950"
+uuid = "3b1b4be9-1499-4b22-8d78-7db3344d1961"
+version = "1.4.2"
+
+[[deps.CFITSIO_jll]]
+deps = ["Artifacts", "JLLWrappers", "LibCURL_jll", "Libdl", "Zlib_jll"]
+git-tree-sha1 = "b90d32054fc88f97dd926022f554180e744e4d7d"
+uuid = "b3e40c51-02ae-5482-8a39-3ace5868dcf4"
+version = "4.4.0+0"
 
 [[deps.Compat]]
 deps = ["TOML", "UUIDs"]
@@ -231,6 +259,12 @@ deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 version = "1.6.0"
 
+[[deps.FITSIO]]
+deps = ["CFITSIO", "Printf", "Reexport", "Tables"]
+git-tree-sha1 = "8b68d078e8ec3660b7e95528f1a888c5222d2fb4"
+uuid = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
+version = "0.17.4"
+
 [[deps.FilePaths]]
 deps = ["FilePathsBase", "MacroTools", "Reexport", "Requires"]
 git-tree-sha1 = "919d9412dbf53a2e6fe74af62a73ceed0bce0629"
@@ -287,6 +321,12 @@ version = "1.3.1"
 git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
 uuid = "82899510-4779-5014-852e-03e436cf321d"
 version = "1.0.0"
+
+[[deps.JLLWrappers]]
+deps = ["Artifacts", "Preferences"]
+git-tree-sha1 = "a007feb38b422fbdab534406aeca1b86823cb4d6"
+uuid = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
+version = "1.7.0"
 
 [[deps.JSON]]
 deps = ["Dates", "Mmap", "Parsers", "Unicode"]
@@ -516,6 +556,9 @@ version = "1.59.0+0"
 # ╠═906a8593-91f9-4947-9c8a-ea28bbaa671f
 # ╠═a1d52486-a5a9-4138-b56b-6c4129090b73
 # ╠═d64e34dc-b0ea-4ea5-bee7-d19c06938276
+# ╠═3cd2a32e-ce62-4063-bc4d-8a9f6bf2874b
+# ╠═ca08da4b-b6c7-40ca-80be-27222b2e16ee
+# ╠═235341f2-0102-490e-9d53-f011de618c7d
 # ╠═cba4adff-f623-4fa3-949f-9a27d6fa69aa
 # ╠═a3244e07-211b-449a-bfcb-927985b65b2f
 # ╠═1ad89925-9707-497f-b682-9f509910d361
