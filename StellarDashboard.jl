@@ -154,6 +154,33 @@ begin
 	f[2].read
 end
 
+# ╔═╡ 2f31b61c-9d20-406e-8306-97b76ede26d5
+function fits_PyToJulia(src::PyObject, dest::AbstractString)
+	
+end
+
+# ╔═╡ 4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
+function async_PyToJulia(src_files::Matrix{PyObject}, dest_dir)
+	# working with the header individually
+	pyPrimaryHDU = src_files[1].header
+	PLATEID      = pyPrimaryHDU.get("PLATEID")
+	TILEID       = pyPrimaryHDU.get("TILEID")
+	CARTID       = pyPrimaryHDU.get("CARTID")
+	MAPID        = pyPrimaryHDU.get("MAPID")
+
+	show(PLATEID)
+	# threading the rest of the files
+	#=
+	@threads for src in src_files[2:]
+		
+		dest = joinpath()
+	end
+	=#
+end
+
+# ╔═╡ 4407e81c-9d70-41d0-8f6a-423f2741e29a
+async_PyToJulia(spectrum, data_dir)
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -566,5 +593,8 @@ version = "1.59.0+0"
 # ╠═9344642b-f279-4934-9241-488bf740377f
 # ╠═f33f46eb-9909-4ef4-b69f-0b67c24caad0
 # ╠═3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
+# ╠═2f31b61c-9d20-406e-8306-97b76ede26d5
+# ╠═4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
+# ╠═4407e81c-9d70-41d0-8f6a-423f2741e29a
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
