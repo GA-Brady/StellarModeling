@@ -4,21 +4,6 @@
 using Markdown
 using InteractiveUtils
 
-# ╔═╡ 3a9c8be6-e990-11ef-044c-57e8b712c0fb
-#=
-Garrett Brady - gab5654@psu.edu
-
-Start: Feb 12th, 2025
-
-This notebook is the dashboard project for ASTRO-416
-Goals: 
-- Ingest SDSS DR17 MaSTAR data
-	- Focus on Star Clusters
-		- Write good ADQL queries for SDSS to get cleaner data
-- fill in the rest later...
-=#
-using FilePaths
-
 # ╔═╡ f33f46eb-9909-4ef4-b69f-0b67c24caad0
 begin
 	ENV["JULIA_PYTHONCALL_EXE"] = "/storage/group/RISE/classroom/astro_416/julia_env/bin/python" 
@@ -39,42 +24,45 @@ begin
 	_t         = astropy.table
 	_u         = astropy.units
 	_SDSS      = sdss.SDSS
+end;
+
+# ╔═╡ 35a0bf20-dca7-4ee3-9c8c-e7a3723e3d49
+begin
+	# starting all the dependencies
+	using Base.Threads
+	using Missings
+	using FITSIO
+	using FilePaths
+	using DataFrames
+	using BenchmarkTools
+	# using FileIO
+
+	# making directories if they don't already exist
+	data_dir = joinpath(pwd(), "data_dir") # data directory for downloads
+	if isdir(data_dir) == false
+		mkdir(data_dir)
+	end
 end
 
-# ╔═╡ 9344642b-f279-4934-9241-488bf740377f
-begin
-	astroquery
-	# importing packages
-	using DataFrames
-end
+# ╔═╡ 3a9c8be6-e990-11ef-044c-57e8b712c0fb
+#=
+Garrett Brady - gab5654@psu.edu
+
+Start: Feb 12th, 2025
+
+This notebook is the dashboard project for ASTRO-416
+Goals: 
+- Ingest SDSS DR17 MaSTAR data
+	- Focus on Star Clusters
+		- Write good ADQL queries for SDSS to get cleaner data
+- fill in the rest later...
+=#
 
 # ╔═╡ 1d4c2b75-2c10-4aad-ac8a-9cccd53e715f
 query = """
 SELECT TOP 1 ra, dec
 FROM SpecObj
 WHERE class = 'STAR'
-"""
-
-# ╔═╡ cba4adff-f623-4fa3-949f-9a27d6fa69aa
-# Initalization Junk
-begin
-	data_dir = joinpath(pwd(), "data_dir")
-	if isdir(data_dir) == false
-		mkdir(data_dir)
-	end
-	astropy_cache_path = joinpath(pwd(), "cache", "astropy")
-	if isdir(astropy_cache_path) == false
-		mkpath(astropy_cache_path)
-	end
-end
-
-# ╔═╡ a3244e07-211b-449a-bfcb-927985b65b2f
-"""
-After getting the spectrum from Astroquery, the Astropy.io.FITS object needs to be converted into a Julia object. 
-
-Is it better to save the FITS file into a data directory and use it later?
-
-Or transfer directly from pyFITS to jlFITS?
 """
 
 # ╔═╡ 1ad89925-9707-497f-b682-9f509910d361
@@ -92,6 +80,9 @@ function ra_str_to_hours(s::AbstractString)
 	(h,m,s) = parse.(Float64,substrs)
 	ra_hours = h+(m+s/60)/60
 end;
+
+# ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
+md""" ### All the Extra Junk """
 
 # ╔═╡ 3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
 begin
@@ -135,64 +126,104 @@ begin
 	# check for anything out of the ordinary which might make data unusable
 end
 
-# ╔═╡ 3cd2a32e-ce62-4063-bc4d-8a9f6bf2874b
-begin
-	spectra_1 = spectrum[6]
-	spectra_1.header
-end
-
-# ╔═╡ ca08da4b-b6c7-40ca-80be-27222b2e16ee
-begin
-	filname = joinpath(data_dir, spectra_1.header.get(j2p_string("FILENAME")))
-	spectra_1.writeto(filname)
-end
-
-# ╔═╡ 235341f2-0102-490e-9d53-f011de618c7d
-begin
-	using FITSIO
-	f = FITS(filname)
-	f[2].read
-end
-
 # ╔═╡ 2f31b61c-9d20-406e-8306-97b76ede26d5
 function fits_PyToJulia(src::PyObject, dest::AbstractString)
+	# Helper function for async batch copying
+	# Copy the fits file to the destination provided
 	
+	try # if the file already exists, skip it
+		if isfile(dest)
+			println("File already exists: $dest")
+			return # exit the function
+		end
+
+		# copying the source FITS to the dest FITS
+		src.writeto(dest)
+		println("Successfully copied: $src -> $dest")
+
+	# if the file cannot be copied, throw an error code
+	catch e
+		println("Error copying source $src : $e")
+	end
 end
 
 # ╔═╡ 4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
-function async_PyToJulia(src_files::Matrix{PyObject}, dest_dir)
+function async_PyToJulia(src_files::Matrix{PyObject}, dest_dir, mkHDUList::Bool=true)
+	# for batch copying HDUList pyobjects to workable directories	
+
+	# ---- What the variables do ----
+	# src_files: Matrix{PyObjects} of the data downloaded from _SDSS.get_spectra()
+	# dest_dir : Location where final files should be collected
+	# mkHDUList: Outputs an HDUList which is comprised of the new files
+	
+	# getting length to initalize an empty array which provides new file locations
+	pyHDUList_length = length(src_files)
+	
+	if mkHDUList == true
+		# makes a new HDUList from the
+		newHDUList = Array{AbstractString}(undef, pyHDUList_length, 1)
+	end
 	# working with the header individually
+	# might want to be able to change header name -- figure out later
 	pyPrimaryHDU = src_files[1].header
 	PLATEID      = pyPrimaryHDU.get("PLATEID")
 	TILEID       = pyPrimaryHDU.get("TILEID")
 	CARTID       = pyPrimaryHDU.get("CARTID")
 	MAPID        = pyPrimaryHDU.get("MAPID")
 
-	show(PLATEID)
-	# threading the rest of the files
-	#=
-	@threads for src in src_files[2:]
-		
-		dest = joinpath()
+	# generating SDSS file name based on ID material
+	PrimaryHDU_name = "P$PLATEID"*"T$TILEID"*"C$CARTID"*"M$MAPID"*"_Spectrum"
+	PrimaryHDU_path = joinpath(data_dir, PrimaryHDU_name)
+
+	# individually downloading header
+	fits_PyToJulia(src_files[1], PrimaryHDU_path)
+
+	# adding header to the HDUList
+	if mkHDUList == true
+		newHDUList[1] = PrimaryHDU_path
 	end
-	=#
+
+	# threading the rest of the files
+	for idx in 2:1:pyHDUList_length
+		src_pyFITS    = src_files[idx]
+		src_name      = src_pyFITS.header.get(j2p_string("FILENAME"))
+
+		# sometimes the ("FILENAME") parameter is missing
+		if isnothing(src_name)
+			src_name  = "FILENAME-MISSING-$idx"
+		end
+		dest   		  = joinpath(dest_dir, src_name)
+		@async fits_PyToJulia(src_files[idx], dest)
+
+		if mkHDUList == true
+			newHDUList[idx] = dest
+			println("Added file to HDUList: $dest")
+		end
+	end
+	if mkHDUList == true
+		return newHDUList
+	end
 end
 
-# ╔═╡ 4407e81c-9d70-41d0-8f6a-423f2741e29a
+# ╔═╡ 06a05728-2953-42f4-9c34-edfecc468f13
 async_PyToJulia(spectrum, data_dir)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 FITSIO = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
 FilePaths = "8fc22ac5-c921-52a6-82fd-178b2807b824"
+Missings = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 
 [compat]
+BenchmarkTools = "~1.6.0"
 DataFrames = "~1.7.0"
 FITSIO = "~0.17.4"
 FilePaths = "~0.8.3"
+Missings = "~1.2.0"
 PyCall = "~1.96.4"
 """
 
@@ -202,7 +233,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "b6cf348748489b46ea39f19188390a652771130b"
+project_hash = "bffe3576f5832ba83e31b48ee6dee4bbacf334a5"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -215,6 +246,12 @@ version = "1.11.0"
 [[deps.Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 version = "1.11.0"
+
+[[deps.BenchmarkTools]]
+deps = ["Compat", "JSON", "Logging", "Printf", "Profile", "Statistics", "UUIDs"]
+git-tree-sha1 = "e38fbc49a620f5d0b660d7f543db1009fe0f8336"
+uuid = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+version = "1.6.0"
 
 [[deps.CFITSIO]]
 deps = ["CFITSIO_jll"]
@@ -390,6 +427,10 @@ deps = ["Libdl", "OpenBLAS_jll", "libblastrampoline_jll"]
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 version = "1.11.0"
 
+[[deps.Logging]]
+uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
+version = "1.11.0"
+
 [[deps.MacroTools]]
 git-tree-sha1 = "72aebe0b5051e5143a079a4685a46da330a40472"
 uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
@@ -466,6 +507,10 @@ version = "2.4.0"
 [[deps.Printf]]
 deps = ["Unicode"]
 uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+version = "1.11.0"
+
+[[deps.Profile]]
+uuid = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
 version = "1.11.0"
 
 [[deps.PyCall]]
@@ -583,18 +628,14 @@ version = "1.59.0+0"
 # ╠═906a8593-91f9-4947-9c8a-ea28bbaa671f
 # ╠═a1d52486-a5a9-4138-b56b-6c4129090b73
 # ╠═d64e34dc-b0ea-4ea5-bee7-d19c06938276
-# ╠═3cd2a32e-ce62-4063-bc4d-8a9f6bf2874b
-# ╠═ca08da4b-b6c7-40ca-80be-27222b2e16ee
-# ╠═235341f2-0102-490e-9d53-f011de618c7d
-# ╠═cba4adff-f623-4fa3-949f-9a27d6fa69aa
-# ╠═a3244e07-211b-449a-bfcb-927985b65b2f
+# ╠═06a05728-2953-42f4-9c34-edfecc468f13
 # ╠═1ad89925-9707-497f-b682-9f509910d361
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
-# ╠═9344642b-f279-4934-9241-488bf740377f
+# ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╠═f33f46eb-9909-4ef4-b69f-0b67c24caad0
-# ╠═3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
-# ╠═2f31b61c-9d20-406e-8306-97b76ede26d5
+# ╟─3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
+# ╟─2f31b61c-9d20-406e-8306-97b76ede26d5
 # ╠═4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
-# ╠═4407e81c-9d70-41d0-8f6a-423f2741e29a
+# ╠═35a0bf20-dca7-4ee3-9c8c-e7a3723e3d49
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
