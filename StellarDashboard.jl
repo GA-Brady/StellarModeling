@@ -98,10 +98,14 @@ end
 md"Selected target: $selected_target"
 
 # ╔═╡ b80a5889-6309-4218-9857-921b7488a8af
-	md"When you are ready to download the spectrum, click the check box: $(@bind download_target_HDUList CheckBox())"
+	md"When you are ready to download the spectrum, click the check box: $(@bind download_target_HDUList CheckBox()) \
+	Click this checkbox to enable verbose output $(@bind HDU_verbose CheckBox(default=true))"
 
 # ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 md""" ### ------ All the Extra Junk ------ """
+
+# ╔═╡ ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
+md"#### Variable Defs to Keep it Clean"
 
 # ╔═╡ d44802f5-c8d1-4678-b34e-92e48b67a90b
 md"#### Coordinates"
@@ -292,10 +296,10 @@ end
 
 # ╔═╡ ac5d4861-8af7-47f4-8bab-cd05daaabce5
 begin
+	num_visits = 1
 	if download_target_HDUList
 		# getting the HDUList from SDSS
 		target_pyHDUList = _SDSS.get_spectra(coordinates = result_sky_coords[selected_target])
-		num_visits = 1 # default number of visits is 1
 		
 		# checking the type of the first object
 		if typeof(target_pyHDUList[1]) == PyObject
@@ -311,22 +315,19 @@ begin
 			extension = "$selected_target"*"-"*"$i"
 			download_dir = download_mkdir(data_dir, extension)
 			println("Generating HDUList $i of $num_visits at $download_dir")
-			HDUMatrix[i] = async_PyToJulia(target_pyHDUList[i], download_dir)
+			HDUMatrix[i] = async_PyToJulia(target_pyHDUList[i], download_dir, true, HDU_verbose)
 			println("Finished HDUList $i.")
 		end
-		
-		# setting the default HDUList so that the rest of the notebook does not break if this edge case is encountered
-		HDUList = HDUMatrix[1]
-	
 	end
 end
 
+# ╔═╡ a57ce818-ec1f-4840-9fb5-c2a67aadd412
+	md"Select the HDUList from the download: $(@bind HDUMatrix_index NumberField(1:num_visits)). Available HDULists for target: $num_visits"
+
 # ╔═╡ 1ad5817e-8a5f-45e4-86dc-17004291a9e1
 begin
-	# Displaying the primary header
-		pyHDU_primary = target_pyHDUList[1]
-		# primary_header = pyHDU_primary.header
-end
+	HDUList = HDUMatrix[HDUMatrix_index];
+end;
 
 # ╔═╡ 6bbabac1-2593-4e66-8e3c-3ce6f7206fbf
 begin
@@ -349,14 +350,18 @@ begin
 	good_bitmask = (COADD_a_mask .== 0 .&& COADD_flux .> 0)
 	masked_logλ  = COADD_logλ[good_bitmask]
 	masked_flux  = COADD_flux[good_bitmask]
-end
 
-# ╔═╡ 1653093f-7cb0-4868-a00e-65c2c201e7cd
-COADD_flux .> 0 
+	masked_log_flux = log10.(masked_flux)
+end;
 
 # ╔═╡ a8ec2b2e-de1a-47b2-a805-5f3f4c7a171a
 begin
-	plot(masked_logλ, log10.(masked_flux))
+	p = fit(masked_logλ, masked_log_flux, 3)
+	continuum_fit = p.(masked_logλ)
+
+	# Plot spectrum with continuum fit
+	plot(masked_logλ, masked_log_flux, label="Spectrum")
+	plot!(masked_logλ, continuum_fit, label="Continuum Fit", linestyle=:dash)
 end
 
 # ╔═╡ bc44d81f-6312-4edc-9181-678e435c6441
@@ -1772,15 +1777,16 @@ version = "1.4.1+2"
 # ╟─898652bb-2250-4b87-90ae-d96f34cf6ce2
 # ╟─061e7bdb-aa45-4519-9df2-9889848f3bb4
 # ╟─6aeb9e34-a1ce-4eb8-a88e-548e12d1e692
-# ╠═b80a5889-6309-4218-9857-921b7488a8af
+# ╟─b80a5889-6309-4218-9857-921b7488a8af
 # ╠═ac5d4861-8af7-47f4-8bab-cd05daaabce5
-# ╠═1ad5817e-8a5f-45e4-86dc-17004291a9e1
-# ╠═6bbabac1-2593-4e66-8e3c-3ce6f7206fbf
-# ╠═c3a1a1e7-9e16-4b7a-84b9-9e0b99a00ca9
-# ╠═1653093f-7cb0-4868-a00e-65c2c201e7cd
+# ╟─a57ce818-ec1f-4840-9fb5-c2a67aadd412
 # ╠═a8ec2b2e-de1a-47b2-a805-5f3f4c7a171a
 # ╠═bc44d81f-6312-4edc-9181-678e435c6441
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
+# ╠═ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
+# ╠═1ad5817e-8a5f-45e4-86dc-17004291a9e1
+# ╟─6bbabac1-2593-4e66-8e3c-3ce6f7206fbf
+# ╠═c3a1a1e7-9e16-4b7a-84b9-9e0b99a00ca9
 # ╟─d44802f5-c8d1-4678-b34e-92e48b67a90b
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
 # ╠═1ad89925-9707-497f-b682-9f509910d361
@@ -1792,7 +1798,7 @@ version = "1.4.1+2"
 # ╠═8394e0d5-fb2b-4402-a6e5-ab00bbd41dfc
 # ╟─abc66cc8-0bc1-4250-89eb-016f0439d0e0
 # ╠═f33f46eb-9909-4ef4-b69f-0b67c24caad0
-# ╟─3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
+# ╠═3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
 # ╠═35a0bf20-dca7-4ee3-9c8c-e7a3723e3d49
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
