@@ -45,6 +45,7 @@ begin
 	using Missings
 	# using Interact
 	using FITSIO
+	using Polynomials
 	using FilePaths
 	using DataFrames
 	using BenchmarkTools
@@ -98,14 +99,6 @@ md"Selected target: $selected_target"
 
 # ╔═╡ b80a5889-6309-4218-9857-921b7488a8af
 	md"When you are ready to download the spectrum, click the check box: $(@bind download_target_HDUList CheckBox())"
-
-# ╔═╡ 04f726bc-78f3-4c1f-a3c3-b10eb2c8a352
-begin #setting the download directory, not exactly sure how I wanna deal with this yet
-	download_dir = joinpath(data_dir, "download_$selected_target")
-	if !isdir(download_dir)
-		mkdir(download_dir)
-	end
-end;
 
 # ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 md""" ### ------ All the Extra Junk ------ """
@@ -191,7 +184,7 @@ function fits_PyToJulia(src::PyObject, dest::AbstractString)
 end
 
 # ╔═╡ 4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
-function async_PyToJulia(src_files::Matrix{PyObject}, dest_dir, mkHDUList::Bool=true, verbose::Bool=true)
+function async_PyToJulia(src_files::Union{Vector, Matrix{PyObject}}, dest_dir, mkHDUList::Bool=true, verbose::Bool=true)
 	# for batch copying HDUList pyobjects to workable directories	
 
 	# ---- What the variables do ----
@@ -218,9 +211,15 @@ function async_PyToJulia(src_files::Matrix{PyObject}, dest_dir, mkHDUList::Bool=
 			TILEID       = pyPrimaryHDU.get("TILEID")
 			CARTID       = pyPrimaryHDU.get("CARTID")
 			MAPID        = pyPrimaryHDU.get("MAPID")
+			RA           = pyPrimaryHDU.get("RA")
+			DEC          = pyPrimaryHDU.get("DEC")
 
 			# setting the file name
 			PrimaryHDU_name ="P$PLATEID"*"T$TILEID"*"C$CARTID"*"M$MAPID"*"_Header.fits"
+
+			if typeof(PrimaryHDU_name) == Nothing
+				PrimaryHDU_name = "R$RA"*"D$DEC"*"_Header.fits"
+			end
 			dest = joinpath(dest_dir, PrimaryHDU_name)
 		else
 			src_pyFITS    = src_files[idx]
@@ -249,6 +248,15 @@ function async_PyToJulia(src_files::Matrix{PyObject}, dest_dir, mkHDUList::Bool=
 	if mkHDUList == true
 		return newHDUList
 	end
+end;
+
+# ╔═╡ 8394e0d5-fb2b-4402-a6e5-ab00bbd41dfc
+function download_mkdir(data_dir::String, extension)
+	local download_dir = joinpath(data_dir, "download_$extension")
+	if !isdir(download_dir)
+		mkdir(download_dir)
+	end
+	return download_dir
 end;
 
 # ╔═╡ abc66cc8-0bc1-4250-89eb-016f0439d0e0
@@ -287,46 +295,73 @@ begin
 	if download_target_HDUList
 		# getting the HDUList from SDSS
 		target_pyHDUList = _SDSS.get_spectra(coordinates = result_sky_coords[selected_target])
+		num_visits = 1 # default number of visits is 1
+		
+		# checking the type of the first object
+		if typeof(target_pyHDUList[1]) == PyObject
+			# if there is a single observation, it does not return a List of HDULists, instead returns just an HDUList, this causes an indexing error from Matrix{Matrix{type}} vs. Matrix{type}. So atttempting to wrap target_pyHDUList in another vector to match indexing requirements.
+			target_pyHDUList = [target_pyHDUList]
+		end
+		
+		num_visits = length(target_pyHDUList)
+		println("Multiple visits, generating $num_visits HDULists")
+		HDUMatrix = Array{Array}(undef, num_visits, 1) # generate a matrix to store the HDULists in
 
-		# Displaying the primary header
-		pyHDU_primary = target_pyHDUList[1]
-		primary_header = pyHDU_primary.header
+		for i in 1:1:num_visits # generating HDULists for each visit
+			extension = "$selected_target"*"-"*"$i"
+			download_dir = download_mkdir(data_dir, extension)
+			println("Generating HDUList $i of $num_visits at $download_dir")
+			HDUMatrix[i] = async_PyToJulia(target_pyHDUList[i], download_dir)
+			println("Finished HDUList $i.")
+		end
+		
+		# setting the default HDUList so that the rest of the notebook does not break if this edge case is encountered
+		HDUList = HDUMatrix[1]
+	
 	end
 end
 
-# ╔═╡ c67397df-c986-421a-b75c-8dc07fc7b879
+# ╔═╡ 1ad5817e-8a5f-45e4-86dc-17004291a9e1
 begin
-	HDUList = async_PyToJulia(target_pyHDUList, download_dir)
-end;
-
-# ╔═╡ 98cefbc3-84e0-45fe-841e-7275fec1e39f
-HDUList[2]
-
-# ╔═╡ 93de5a27-c984-4e37-b81f-0c2c8ed4a777
-begin
-	#read_header() provides header data
-	f6 = FITS(HDUList[2])
-	flux = read(f6[2], "flux")
-	logλ = read(f6[2], "loglam")
-	f1 = FITS(HDUList[1])
+	# Displaying the primary header
+		pyHDU_primary = target_pyHDUList[1]
+		# primary_header = pyHDU_primary.header
 end
+
+# ╔═╡ 6bbabac1-2593-4e66-8e3c-3ce6f7206fbf
+begin
+	COADD_data = FITS(HDUList[2])[2]
+end
+
+# ╔═╡ c3a1a1e7-9e16-4b7a-84b9-9e0b99a00ca9
+begin 
+	# ripping the data from the file
+	COADD_flux = read(COADD_data, "flux"); # flux: 10^-17 erg/s/cm^2/
+	COADD_logλ = read(COADD_data, "loglam");  # log10(lambda)
+	COADD_ivar = read(COADD_data, "ivar"); # 1/sigma^2
+	COADD_a_mask = read(COADD_data, "and_mask"); # bad pixel map
+	COADD_or_mask = read(COADD_data, "and_mask"); # bad pixel map
+	COADD_sky = read(COADD_data, "sky");   # background sky
+	COADD_model = read(COADD_data, "model");   # background sky
+	COADD_flux_sky_corr = COADD_flux .- COADD_sky
+	
+	# masking data based on bad pixel values
+	good_bitmask = (COADD_a_mask .== 0 .&& COADD_flux .> 0)
+	masked_logλ  = COADD_logλ[good_bitmask]
+	masked_flux  = COADD_flux[good_bitmask]
+end
+
+# ╔═╡ 1653093f-7cb0-4868-a00e-65c2c201e7cd
+COADD_flux .> 0 
 
 # ╔═╡ a8ec2b2e-de1a-47b2-a805-5f3f4c7a171a
 begin
-	plot(10 .^logλ .*1E-17, flux)
-end
-
-# ╔═╡ 7bbea8f7-8979-4635-a3b6-56104d1591c8
-begin
-	#read_header() provides header data
-	f2 = FITS(HDUList[2])
-	model = read(f2[2], "model")
-	# mask = read(f2[2], "mask")
+	plot(masked_logλ, log10.(masked_flux))
 end
 
 # ╔═╡ bc44d81f-6312-4edc-9181-678e435c6441
 begin
-	plot(10 .^logλ .*1E-17, model)
+	plot(COADD_logλ, COADD_model)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -340,6 +375,7 @@ FilePaths = "8fc22ac5-c921-52a6-82fd-178b2807b824"
 Missings = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+Polynomials = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
 
@@ -352,6 +388,7 @@ FilePaths = "~0.8.3"
 Missings = "~1.2.0"
 Plots = "~1.40.9"
 PlutoUI = "~0.7.23"
+Polynomials = "~4.0.19"
 PyCall = "~1.96.4"
 Tables = "~1.12.0"
 """
@@ -362,7 +399,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "af4b1af8dc85937ad69b47b348f550c64e2db366"
+project_hash = "f6ee517f7847da1918762352e2f7b43d4bcf0f61"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -491,6 +528,21 @@ deps = ["Downloads", "JSON", "VersionParsing"]
 git-tree-sha1 = "b19db3927f0db4151cb86d073689f2428e524576"
 uuid = "8f4d0f93-b110-5947-807f-2305c1781a2d"
 version = "1.10.2"
+
+[[deps.ConstructionBase]]
+git-tree-sha1 = "76219f1ed5771adbb096743bff43fb5fdd4c1157"
+uuid = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
+version = "1.5.8"
+
+    [deps.ConstructionBase.extensions]
+    ConstructionBaseIntervalSetsExt = "IntervalSets"
+    ConstructionBaseLinearAlgebraExt = "LinearAlgebra"
+    ConstructionBaseStaticArraysExt = "StaticArrays"
+
+    [deps.ConstructionBase.weakdeps]
+    IntervalSets = "8197267c-284f-5f27-9208-e0e47529a953"
+    LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.Contour]]
 git-tree-sha1 = "439e35b0b36e2e5881738abc8857bd92ad6ff9a8"
@@ -1088,6 +1140,24 @@ git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
 uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 version = "0.7.23"
 
+[[deps.Polynomials]]
+deps = ["LinearAlgebra", "OrderedCollections", "RecipesBase", "Requires", "Setfield", "SparseArrays"]
+git-tree-sha1 = "555c272d20fc80a2658587fb9bbda60067b93b7c"
+uuid = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
+version = "4.0.19"
+
+    [deps.Polynomials.extensions]
+    PolynomialsChainRulesCoreExt = "ChainRulesCore"
+    PolynomialsFFTWExt = "FFTW"
+    PolynomialsMakieCoreExt = "MakieCore"
+    PolynomialsMutableArithmeticsExt = "MutableArithmetics"
+
+    [deps.Polynomials.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+    MakieCore = "20f20a25-4f0e-4fdf-b5d1-57303727442b"
+    MutableArithmetics = "d8a4904e-b15c-11e9-3269-09a3773c0cb0"
+
 [[deps.PooledArrays]]
 deps = ["DataAPI", "Future"]
 git-tree-sha1 = "36d8b4b899628fb92c2749eb488d884a926614d3"
@@ -1215,6 +1285,12 @@ version = "1.4.8"
 uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 version = "1.11.0"
 
+[[deps.Setfield]]
+deps = ["ConstructionBase", "Future", "MacroTools", "StaticArraysCore"]
+git-tree-sha1 = "c5391c6ace3bc430ca630251d02ea9687169ca68"
+uuid = "efcf1570-3423-57d1-acb7-fd33fddbac46"
+version = "1.1.2"
+
 [[deps.Showoff]]
 deps = ["Dates", "Grisu"]
 git-tree-sha1 = "91eddf657aca81df9ae6ceb20b959ae5653ad1de"
@@ -1246,6 +1322,11 @@ deps = ["Random"]
 git-tree-sha1 = "83e6cce8324d49dfaf9ef059227f91ed4441a8e5"
 uuid = "860ef19b-820b-49d6-a774-d7a799459cd3"
 version = "1.0.2"
+
+[[deps.StaticArraysCore]]
+git-tree-sha1 = "192954ef1208c7019899fbf8049e717f92959682"
+uuid = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
+version = "1.4.3"
 
 [[deps.Statistics]]
 deps = ["LinearAlgebra"]
@@ -1693,12 +1774,11 @@ version = "1.4.1+2"
 # ╟─6aeb9e34-a1ce-4eb8-a88e-548e12d1e692
 # ╠═b80a5889-6309-4218-9857-921b7488a8af
 # ╠═ac5d4861-8af7-47f4-8bab-cd05daaabce5
-# ╠═04f726bc-78f3-4c1f-a3c3-b10eb2c8a352
-# ╠═c67397df-c986-421a-b75c-8dc07fc7b879
-# ╠═98cefbc3-84e0-45fe-841e-7275fec1e39f
-# ╠═93de5a27-c984-4e37-b81f-0c2c8ed4a777
+# ╠═1ad5817e-8a5f-45e4-86dc-17004291a9e1
+# ╠═6bbabac1-2593-4e66-8e3c-3ce6f7206fbf
+# ╠═c3a1a1e7-9e16-4b7a-84b9-9e0b99a00ca9
+# ╠═1653093f-7cb0-4868-a00e-65c2c201e7cd
 # ╠═a8ec2b2e-de1a-47b2-a805-5f3f4c7a171a
-# ╠═7bbea8f7-8979-4635-a3b6-56104d1591c8
 # ╠═bc44d81f-6312-4edc-9181-678e435c6441
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╟─d44802f5-c8d1-4678-b34e-92e48b67a90b
@@ -1709,6 +1789,7 @@ version = "1.4.1+2"
 # ╠═8373cc57-a4ad-466d-921d-493e04bde717
 # ╠═2f31b61c-9d20-406e-8306-97b76ede26d5
 # ╠═4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
+# ╠═8394e0d5-fb2b-4402-a6e5-ab00bbd41dfc
 # ╟─abc66cc8-0bc1-4250-89eb-016f0439d0e0
 # ╠═f33f46eb-9909-4ef4-b69f-0b67c24caad0
 # ╟─3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
