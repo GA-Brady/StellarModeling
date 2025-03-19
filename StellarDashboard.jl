@@ -4,6 +4,18 @@
 using Markdown
 using InteractiveUtils
 
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    #! format: off
+    quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+    #! format: on
+end
+
 # ╔═╡ f33f46eb-9909-4ef4-b69f-0b67c24caad0
 begin
 	ENV["JULIA_PYTHONCALL_EXE"] = "/storage/group/RISE/classroom/astro_416/julia_env/bin/python" 
@@ -31,12 +43,15 @@ begin
 	# starting all the dependencies
 	using Base.Threads
 	using Missings
+	# using Interact
 	using FITSIO
 	using FilePaths
 	using DataFrames
 	using BenchmarkTools
 	using Plots
+	using Tables
 	using CSV
+	using PlutoUI
 	# using FileIO
 
 	# making directories if they don't already exist
@@ -52,25 +67,45 @@ begin
 end
 
 # ╔═╡ 3a9c8be6-e990-11ef-044c-57e8b712c0fb
-#=
-Garrett Brady - gab5654@psu.edu
+md"
+# Stellar Temperature Dashboard
+The goal of this dashboard is to ingest SDSS MaSTAR data from DR17 then estimate the temperature of stars. \
 
-Start: Feb 12th, 2025
 
-This notebook is the dashboard project for ASTRO-416
-Goals: 
-- Ingest SDSS DR17 MaSTAR data
-	- Focus on Star Clusters
-		- Write good ADQL queries for SDSS to get cleaner data
-- fill in the rest later...
-=#
+Garrett Brady - gab5654@psu.edu \
+Start: Feb 12th, 2025 
+"
 
-# ╔═╡ 1d4c2b75-2c10-4aad-ac8a-9cccd53e715f
-query = """
-SELECT TOP 1 ra, dec
+# ╔═╡ 2451cb46-729a-45c4-b0c0-d2d3e8b9e297
+begin
+	num_targets = 50
+	MaSTAR_query = """
+SELECT TOP $num_targets ra, dec
 FROM SpecObj
 WHERE class = 'STAR'
-"""
+""";
+	print("Current MaSTAR query: \n--------------------- \n", MaSTAR_query)
+	md" Send query to SDSS server: $(@bind send_query CheckBox())"
+end
+
+# ╔═╡ 061e7bdb-aa45-4519-9df2-9889848f3bb4
+begin
+	md"to avoid mixing spectrum, we want to download a single element at a time. Use this slider to select which star, then press confirm to update the notebook. $(@bind selected_target Slider(1:num_targets))."
+end
+
+# ╔═╡ 6aeb9e34-a1ce-4eb8-a88e-548e12d1e692
+md"Selected target: $selected_target"
+
+# ╔═╡ b80a5889-6309-4218-9857-921b7488a8af
+	md"When you are ready to download the spectrum, click the check box: $(@bind download_target_HDUList CheckBox())"
+
+# ╔═╡ 04f726bc-78f3-4c1f-a3c3-b10eb2c8a352
+begin #setting the download directory, not exactly sure how I wanna deal with this yet
+	download_dir = joinpath(data_dir, "download_$selected_target")
+	if !isdir(download_dir)
+		mkdir(download_dir)
+	end
+end;
 
 # ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 md""" ### ------ All the Extra Junk ------ """
@@ -97,11 +132,48 @@ end;
 # ╔═╡ d40536f8-eca0-4780-9315-347238ce27a4
 md"#### File Management "
 
+# ╔═╡ cd6a7f57-6c47-4bac-8d12-afc1632c4299
+"""
+function fits_pickler(HDUList::Matrix, dest::AbstractString)
+	FITS(dest, "w") do out_file
+		for file in HDUList
+			opened_file = FITS(file)
+			if length(opened_file) == 1
+
+			end
+		end
+	end
+end
+FITS("combined.fits", "w") do f
+    for (i, file) in enumerate(readdir("Observation_YYYYMMDD", join=true))
+        data = DataFrame(FITS(file)[1])  # Read primary HDU data
+        write(f, data; name="EXT")  # Write to a new extension with a unique name
+    end
+end """
+
+# ╔═╡ 8373cc57-a4ad-466d-921d-493e04bde717
+"""
+begin
+f = FITS(HDUList[1])
+
+test_header = read_header(f[1])
+hkeys = keys(test_header)
+f_test = FITS("test.fits", "w")
+key_values = values(test_header)
+comments = Array{String}(undef, length(key_values), 1)
+
+write_key(f[1], hkeys[1], key_values[1])
+
+f_read = FITS("test.fits", "r")
+get_header(f_read[1])
+end """
+
 # ╔═╡ 2f31b61c-9d20-406e-8306-97b76ede26d5
 function fits_PyToJulia(src::PyObject, dest::AbstractString)
 	# Helper function for async batch copying
 	# Copy the fits file to the destination provided
-	
+
+	# 
 	try # if the file already exists, skip it
 		if isfile(dest)
 			println("File already exists: $dest")
@@ -118,17 +190,8 @@ function fits_PyToJulia(src::PyObject, dest::AbstractString)
 	end
 end
 
-# ╔═╡ cd6a7f57-6c47-4bac-8d12-afc1632c4299
-function fits_pickler(HDUList::Matrix, dest::AbstractString)
-	FITS(dest, "w") do f
-		for file in HDUList
-		
-		end
-	end
-end
-
 # ╔═╡ 4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
-function async_PyToJulia(src_files::Matrix{PyObject}, dest_dir, mkHDUList::Bool=true)
+function async_PyToJulia(src_files::Matrix{PyObject}, dest_dir, mkHDUList::Bool=true, verbose::Bool=true)
 	# for batch copying HDUList pyobjects to workable directories	
 
 	# ---- What the variables do ----
@@ -143,48 +206,50 @@ function async_PyToJulia(src_files::Matrix{PyObject}, dest_dir, mkHDUList::Bool=
 		# makes a new HDUList from the
 		newHDUList = Array{AbstractString}(undef, pyHDUList_length, 1)
 	end
-	# working with the header individually
-	# might want to be able to change header name -- figure out later
-	pyPrimaryHDU = src_files[1].header
-	PLATEID      = pyPrimaryHDU.get("PLATEID")
-	TILEID       = pyPrimaryHDU.get("TILEID")
-	CARTID       = pyPrimaryHDU.get("CARTID")
-	MAPID        = pyPrimaryHDU.get("MAPID")
 
-	# generating SDSS file name based on ID material
-	PrimaryHDU_name = "P$PLATEID"*"T$TILEID"*"C$CARTID"*"M$MAPID"*"_Primary.fits"
-	PrimaryHDU_path = joinpath(data_dir, PrimaryHDU_name)
+	# iterating through the list of source files
+	for idx in 1:1:pyHDUList_length
+		
+		# checking to see if the file is a fits header
+		if src_files[idx].header.get("XTENSION") == nothing
+			# SDSS Primary FITS headers do not contain the XTENSION key
+			pyPrimaryHDU = src_files[idx].header
+			PLATEID      = pyPrimaryHDU.get("PLATEID")
+			TILEID       = pyPrimaryHDU.get("TILEID")
+			CARTID       = pyPrimaryHDU.get("CARTID")
+			MAPID        = pyPrimaryHDU.get("MAPID")
 
-	# individually downloading header
-	fits_PyToJulia(src_files[1], PrimaryHDU_path)
+			# setting the file name
+			PrimaryHDU_name ="P$PLATEID"*"T$TILEID"*"C$CARTID"*"M$MAPID"*"_Header.fits"
+			dest = joinpath(dest_dir, PrimaryHDU_name)
+		else
+			src_pyFITS    = src_files[idx]
+			src_name      = src_pyFITS.header.get("EXTNAME")
+	
+			# sometimes the ("FILENAME") parameter is missing
+			if isnothing(src_name)
+				# set the filename to missing if it doesnt exist
+				src_name  = "FILENAME-MISSING-$idx.fits"
+			end
 
-	# adding header to the HDUList
-	if mkHDUList == true
-		newHDUList[1] = PrimaryHDU_path
-	end
-
-	# threading the rest of the files
-	for idx in 2:1:pyHDUList_length
-		src_pyFITS    = src_files[idx]
-		src_name      = src_pyFITS.header.get("FILENAME")
-
-		# sometimes the ("FILENAME") parameter is missing
-		if isnothing(src_name)
-			src_name  = "FILENAME-MISSING-$idx.fit"
+			# setting the file name if it is not a PrimaryHDU
+			src_name = src_name
+			dest   	 = joinpath(dest_dir, "$src_name.fits")
 		end
-		src_name = src_name*"s"
-		dest   		  = joinpath(dest_dir, src_name)
 		@async fits_PyToJulia(src_files[idx], dest)
 
 		if mkHDUList == true
 			newHDUList[idx] = dest
-			println("Added file to HDUList: $dest")
+			
+			if verbose
+				println("Added file to HDUList: $dest")
+			end
 		end
 	end
 	if mkHDUList == true
 		return newHDUList
 	end
-end
+end;
 
 # ╔═╡ abc66cc8-0bc1-4250-89eb-016f0439d0e0
 md" #### Python & Package Dependencies "
@@ -202,61 +267,67 @@ end
 end
 
 # ╔═╡ 898652bb-2250-4b87-90ae-d96f34cf6ce2
-result = _SDSS.query_sql(j2p_string(query))
-
-# ╔═╡ ca86a824-a985-4ebe-b80b-5b64505aa037
 begin
-	pydf_result = result.to_pandas()
-	py_ra_col   = pydf_result["ra"]
-	py_dec_col  = pydf_result["dec"]
+	if send_query
+		# sending the query to SDSS
+		query_result = _SDSS.query_sql(j2p_string(MaSTAR_query))
+
+		# getting a list of coordinates
+		py_Objs_lst = query_result.to_pandas()
+		py_ra_col   = py_Objs_lst["ra"]
+		py_dec_col  = py_Objs_lst["dec"]
+
+		# turning the list of coordinates into sky coordinates
+		result_sky_coords = _coords.SkyCoord(py_ra_col, py_dec_col, unit="deg")
+	end
 end
 
-# ╔═╡ 906a8593-91f9-4947-9c8a-ea28bbaa671f
+# ╔═╡ ac5d4861-8af7-47f4-8bab-cd05daaabce5
 begin
-	result_sky_coords = _coords.SkyCoord(py_ra_col, py_dec_col, unit="deg")
+	if download_target_HDUList
+		# getting the HDUList from SDSS
+		target_pyHDUList = _SDSS.get_spectra(coordinates = result_sky_coords[selected_target])
+
+		# Displaying the primary header
+		pyHDU_primary = target_pyHDUList[1]
+		primary_header = pyHDU_primary.header
+	end
 end
 
-# ╔═╡ a1d52486-a5a9-4138-b56b-6c4129090b73
+# ╔═╡ c67397df-c986-421a-b75c-8dc07fc7b879
 begin
-query_result = _SDSS.get_spectra(coordinates = result_sky_coords)
-spectrum = query_result
-end
-# want to save this directly to a file, then access in Julia to stop usign PyCall
-# Astroquery.download_products() such and such to data_dir (needs defined)
-# plus then spectra need only be downloaded once / analysis
-# create some garbage clean-up for throwing out spectra 
+	HDUList = async_PyToJulia(target_pyHDUList, download_dir)
+end;
 
-# ╔═╡ d64e34dc-b0ea-4ea5-bee7-d19c06938276
-begin
-	pyHDU_primary = spectrum[1]
-	header = pyHDU_primary.header
-	# check header data for data quality flags
-	# check for anything out of the ordinary which might make data unusable
-end
-
-# ╔═╡ 06a05728-2953-42f4-9c34-edfecc468f13
-begin
-	HDUList = async_PyToJulia(spectrum, data_dir)
-end
+# ╔═╡ 98cefbc3-84e0-45fe-841e-7275fec1e39f
+HDUList[2]
 
 # ╔═╡ 93de5a27-c984-4e37-b81f-0c2c8ed4a777
 begin
-	f6 = FITS(HDUList[6])
+	#read_header() provides header data
+	f6 = FITS(HDUList[2])
 	flux = read(f6[2], "flux")
 	logλ = read(f6[2], "loglam")
 	f1 = FITS(HDUList[1])
 end
-
-# ╔═╡ 6b66978a-b1b8-4cd9-bc43-2d997355969a
-read_header(f1[1])
 
 # ╔═╡ a8ec2b2e-de1a-47b2-a805-5f3f4c7a171a
 begin
 	plot(10 .^logλ .*1E-17, flux)
 end
 
-# ╔═╡ 98cefbc3-84e0-45fe-841e-7275fec1e39f
-name = typeof(spectrum[6].header.get("FILENAME"))
+# ╔═╡ 7bbea8f7-8979-4635-a3b6-56104d1591c8
+begin
+	#read_header() provides header data
+	f2 = FITS(HDUList[2])
+	model = read(f2[2], "model")
+	# mask = read(f2[2], "mask")
+end
+
+# ╔═╡ bc44d81f-6312-4edc-9181-678e435c6441
+begin
+	plot(10 .^logλ .*1E-17, model)
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -268,7 +339,9 @@ FITSIO = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
 FilePaths = "8fc22ac5-c921-52a6-82fd-178b2807b824"
 Missings = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
 
 [compat]
 BenchmarkTools = "~1.6.0"
@@ -278,7 +351,9 @@ FITSIO = "~0.17.4"
 FilePaths = "~0.8.3"
 Missings = "~1.2.0"
 Plots = "~1.40.9"
+PlutoUI = "~0.7.23"
 PyCall = "~1.96.4"
+Tables = "~1.12.0"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -287,7 +362,13 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "5a92e6013ccb2575be65a9f5b59f35524c3fd65d"
+project_hash = "af4b1af8dc85937ad69b47b348f550c64e2db366"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.3.2"
 
 [[deps.AliasTables]]
 deps = ["PtrArrays", "Random"]
@@ -344,9 +425,9 @@ version = "0.10.15"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
-git-tree-sha1 = "009060c9a6168704143100f36ab08f06c2af4642"
+git-tree-sha1 = "2ac646d71d0d24b44f3f8c84da8c9f4d70fb67df"
 uuid = "83423d85-b0ee-5818-9007-b63ccbeb887a"
-version = "1.18.2+1"
+version = "1.18.4+0"
 
 [[deps.CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
@@ -362,19 +443,15 @@ version = "3.29.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
-git-tree-sha1 = "c7acce7a7e1078a20a285211dd73cd3941a871d6"
+git-tree-sha1 = "b10d0b65641d57b8b4d5e234446582de5047050d"
 uuid = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
-version = "0.12.0"
-weakdeps = ["StyledStrings"]
-
-    [deps.ColorTypes.extensions]
-    StyledStringsExt = "StyledStrings"
+version = "0.11.5"
 
 [[deps.ColorVectorSpace]]
 deps = ["ColorTypes", "FixedPointNumbers", "LinearAlgebra", "Requires", "Statistics", "TensorCore"]
-git-tree-sha1 = "8b3b6f87ce8f65a2b4f857528fd8d70086cd72b1"
+git-tree-sha1 = "a1f44953f2382ebb937d60dafbe2deea4bd23249"
 uuid = "c3611d14-8923-5661-9e6a-0046d554d3a4"
-version = "0.11.0"
+version = "0.10.0"
 
     [deps.ColorVectorSpace.extensions]
     SpecialFunctionsExt = "SpecialFunctions"
@@ -384,9 +461,9 @@ version = "0.11.0"
 
 [[deps.Colors]]
 deps = ["ColorTypes", "FixedPointNumbers", "Reexport"]
-git-tree-sha1 = "64e15186f0aa277e174aa81798f7eb8598e0157e"
+git-tree-sha1 = "362a287c3aa50601b0bc359053d5c2468f0e7ce0"
 uuid = "5ae59095-9a9b-59fe-a467-6f913c188581"
-version = "0.13.0"
+version = "0.12.11"
 
 [[deps.Compat]]
 deps = ["TOML", "UUIDs"]
@@ -438,9 +515,9 @@ version = "1.7.0"
 
 [[deps.DataStructures]]
 deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
-git-tree-sha1 = "1d0a14036acb104d9e89698bd408f63ab58cdc82"
+git-tree-sha1 = "4e1fe97fdaed23e9dc21d4d664bea76b65fc50a0"
 uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
-version = "0.18.20"
+version = "0.18.22"
 
 [[deps.DataValueInterfaces]]
 git-tree-sha1 = "bfc1187b79289637fa0ef6d4436ebdfe6905cbd6"
@@ -519,9 +596,9 @@ version = "0.8.3"
 
 [[deps.FilePathsBase]]
 deps = ["Compat", "Dates"]
-git-tree-sha1 = "2ec417fc319faa2d768621085cc1feebbdee686b"
+git-tree-sha1 = "3bab2c5aa25e7840a4b065805c0cdfc01f3068d2"
 uuid = "48062228-2e41-5def-b9a4-89aafe57970f"
-version = "0.9.23"
+version = "0.9.24"
 weakdeps = ["Mmap", "Test"]
 
     [deps.FilePathsBase.extensions]
@@ -619,10 +696,28 @@ git-tree-sha1 = "55c53be97790242c29031e5cd45e8ac296dadda3"
 uuid = "2e76f6c2-a576-52d4-95c1-20adfe4de566"
 version = "8.5.0+0"
 
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.4"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "7134810b1afce04bbc1045ca1985fbe81ce17653"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.5"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "b6d6bfdd7ce25b0f9b2f6b3dd56b2673a66c8770"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.5"
+
 [[deps.InlineStrings]]
-git-tree-sha1 = "45521d31238e87ee9f9732561bfee12d4eebd52d"
+git-tree-sha1 = "6a9fde685a7ac1eb3495f8e812c5a7c3711c2d5e"
 uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
-version = "1.4.2"
+version = "1.4.3"
 
     [deps.InlineStrings.extensions]
     ArrowTypesExt = "ArrowTypes"
@@ -942,9 +1037,9 @@ version = "1.3.0"
 
 [[deps.Pixman_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LLVMOpenMP_jll", "Libdl"]
-git-tree-sha1 = "35621f10a7531bc8fa58f74610b1bfb70a3cfc6b"
+git-tree-sha1 = "db76b1ecd5e9715f3d043cec13b2ec93ce015d53"
 uuid = "30392449-352a-5448-841d-b1acce4e97dc"
-version = "0.43.4+0"
+version = "0.44.2+0"
 
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "Random", "SHA", "TOML", "Tar", "UUIDs", "p7zip_jll"]
@@ -986,6 +1081,12 @@ version = "1.40.9"
     IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"
     ImageInTerminal = "d8c32880-2388-543b-8c61-d9f865259254"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
+
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
+git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.23"
 
 [[deps.PooledArrays]]
 deps = ["DataAPI", "Future"]
@@ -1090,9 +1191,9 @@ version = "1.0.1"
 
 [[deps.Requires]]
 deps = ["UUIDs"]
-git-tree-sha1 = "838a3a4188e2ded87a4f9f184b4b0d78a1e91cb7"
+git-tree-sha1 = "62389eeff14780bfe55195b7204c0d8738436d64"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
-version = "1.3.0"
+version = "1.3.1"
 
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
@@ -1221,6 +1322,11 @@ git-tree-sha1 = "0c45878dcfdcfa8480052b6ab162cdd138781742"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 version = "0.11.3"
 
+[[deps.Tricks]]
+git-tree-sha1 = "6cae795a5a9313bbb4f60683f7263318fc7d1505"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.10"
+
 [[deps.URIs]]
 git-tree-sha1 = "67db6cc7b3821e19ebe75791a9dd19c9b1188f2b"
 uuid = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
@@ -1302,9 +1408,9 @@ version = "1.6.1"
 
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Zlib_jll"]
-git-tree-sha1 = "ee6f41aac16f6c9a8cab34e2f7a200418b1cc1e3"
+git-tree-sha1 = "b8b243e47228b4a3877f1dd6aee0c5d56db7fcf4"
 uuid = "02c8fc9c-b97f-50b9-bbe4-9be30ff0a78a"
-version = "2.13.6+0"
+version = "2.13.6+1"
 
 [[deps.XSLT_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libgcrypt_jll", "Libgpg_error_jll", "Libiconv_jll", "XML2_jll", "Zlib_jll"]
@@ -1469,9 +1575,9 @@ version = "1.2.13+1"
 
 [[deps.Zstd_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "622cf78670d067c738667aaa96c553430b65e269"
+git-tree-sha1 = "446b23e73536f84e8037f5dce465e92275f6a308"
 uuid = "3161d3a3-bdf6-5164-811a-617609db77b4"
-version = "1.5.7+0"
+version = "1.5.7+1"
 
 [[deps.eudev_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "gperf_jll"]
@@ -1534,9 +1640,9 @@ version = "1.18.0+0"
 
 [[deps.libpng_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Zlib_jll"]
-git-tree-sha1 = "055a96774f383318750a1a5e10fd4151f04c29c5"
+git-tree-sha1 = "068dfe202b0a05b8332f1e8e6b4080684b9c7700"
 uuid = "b53b4c65-9356-5827-b1ea-8c7a1a84506f"
-version = "1.6.46+0"
+version = "1.6.47+0"
 
 [[deps.libvorbis_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Ogg_jll", "Pkg"]
@@ -1580,25 +1686,28 @@ version = "1.4.1+2"
 """
 
 # ╔═╡ Cell order:
-# ╠═3a9c8be6-e990-11ef-044c-57e8b712c0fb
-# ╠═1d4c2b75-2c10-4aad-ac8a-9cccd53e715f
-# ╠═898652bb-2250-4b87-90ae-d96f34cf6ce2
-# ╠═ca86a824-a985-4ebe-b80b-5b64505aa037
-# ╠═906a8593-91f9-4947-9c8a-ea28bbaa671f
-# ╠═a1d52486-a5a9-4138-b56b-6c4129090b73
-# ╠═d64e34dc-b0ea-4ea5-bee7-d19c06938276
-# ╠═06a05728-2953-42f4-9c34-edfecc468f13
+# ╟─3a9c8be6-e990-11ef-044c-57e8b712c0fb
+# ╟─2451cb46-729a-45c4-b0c0-d2d3e8b9e297
+# ╟─898652bb-2250-4b87-90ae-d96f34cf6ce2
+# ╟─061e7bdb-aa45-4519-9df2-9889848f3bb4
+# ╟─6aeb9e34-a1ce-4eb8-a88e-548e12d1e692
+# ╠═b80a5889-6309-4218-9857-921b7488a8af
+# ╠═ac5d4861-8af7-47f4-8bab-cd05daaabce5
+# ╠═04f726bc-78f3-4c1f-a3c3-b10eb2c8a352
+# ╠═c67397df-c986-421a-b75c-8dc07fc7b879
 # ╠═98cefbc3-84e0-45fe-841e-7275fec1e39f
 # ╠═93de5a27-c984-4e37-b81f-0c2c8ed4a777
-# ╠═6b66978a-b1b8-4cd9-bc43-2d997355969a
 # ╠═a8ec2b2e-de1a-47b2-a805-5f3f4c7a171a
+# ╠═7bbea8f7-8979-4635-a3b6-56104d1591c8
+# ╠═bc44d81f-6312-4edc-9181-678e435c6441
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╟─d44802f5-c8d1-4678-b34e-92e48b67a90b
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
 # ╠═1ad89925-9707-497f-b682-9f509910d361
 # ╟─d40536f8-eca0-4780-9315-347238ce27a4
-# ╠═2f31b61c-9d20-406e-8306-97b76ede26d5
 # ╠═cd6a7f57-6c47-4bac-8d12-afc1632c4299
+# ╠═8373cc57-a4ad-466d-921d-493e04bde717
+# ╠═2f31b61c-9d20-406e-8306-97b76ede26d5
 # ╠═4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
 # ╟─abc66cc8-0bc1-4250-89eb-016f0439d0e0
 # ╠═f33f46eb-9909-4ef4-b69f-0b67c24caad0
