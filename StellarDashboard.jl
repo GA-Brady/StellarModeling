@@ -369,6 +369,33 @@ begin
 	plot(COADD_logλ, COADD_model)
 end
 
+# ╔═╡ aef87fa2-9a65-48e0-891d-1591c845b3a4
+begin
+using OrderedCollections
+
+function convert_PyObjectHDU_to_Dict(pyobj::PyObject)
+OrderedDict{String,Union{Int64,BigInt,Float64,String,Bool}}(collect(pyobj.header.keys()).=>collect(pyobj.header.values()))
+end
+
+function convert_PyObjectHDU_to_FITSHeader(pyobj::PyObject)
+FITSHeader(convert.(String,collect(pyobj.header.keys())),collect(pyobj.header.values()),convert.(String,pyobj.header.comments))
+end
+
+function read_PyObject_HDU(pyobj::PyObject)
+DataFrame(map(n->pyobj.data.field(n).tolist(),pyobj.data.columns.names),pyobj.data.columns.names)
+end
+
+file_id = 1
+
+fits_headers_as_dict = convert_PyObjectHDU_to_Dict.(vec(target_pyHDUList[file_id]));
+
+fits_headers = convert_PyObjectHDU_to_FITSHeader.(vec(target_pyHDUList[file_id]));
+
+hdu_to_read = vec(target_pyHDUList[file_id])[2];
+
+df_coadd = read_PyObject_HDU(hdu_to_read)
+end
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -378,6 +405,7 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 FITSIO = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
 FilePaths = "8fc22ac5-c921-52a6-82fd-178b2807b824"
 Missings = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
+OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Polynomials = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
@@ -391,6 +419,7 @@ DataFrames = "~1.7.0"
 FITSIO = "~0.17.4"
 FilePaths = "~0.8.3"
 Missings = "~1.2.0"
+OrderedCollections = "~1.8.0"
 Plots = "~1.40.9"
 PlutoUI = "~0.7.23"
 Polynomials = "~4.0.19"
@@ -404,7 +433,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "f6ee517f7847da1918762352e2f7b43d4bcf0f61"
+project_hash = "849217cd0223454da5c4005ec6583daa7567515d"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -1800,5 +1829,6 @@ version = "1.4.1+2"
 # ╠═f33f46eb-9909-4ef4-b69f-0b67c24caad0
 # ╠═3ef324a3-2e7f-4ff3-88df-5f8e91aa6a1a
 # ╠═35a0bf20-dca7-4ee3-9c8c-e7a3723e3d49
+# ╠═aef87fa2-9a65-48e0-891d-1591c845b3a4
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
