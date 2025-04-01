@@ -370,13 +370,49 @@ begin
 	hdu_to_read = vec(target_pyHDUList[file_id])[2];
 	
 	df_coadd = read_PyObject_HDU(hdu_to_read)
+
+	cm_wvln  = 10 .^ (df_coadd.loglam) * 10^(-8);
+
+	df_coadd
+end
+
+# ╔═╡ 7318f7ea-74ad-4125-9738-c34fb4d7b27c
+begin
+	function f(x::AbstractVector)
+		model = planck(x[1], cm_wvln, x[2])
+		χ_squared = (df_coadd.flux .- model) .^2
+		return sum(χ_squared)
+	end
+end
+
+# ╔═╡ 04d6d1ab-97ee-47ba-96ba-2c378e4e03cb
+begin
+	optimizer_result = optimize(f, [.1, 20000])
+	optimized_params = optimizer_result.minimizer
+	A_optimized = optimized_params[1]
+	T_optimized = optimized_params[2]
+
+	#=
+	future optimizer plans:
+		1) weight values based on their variance
+		2) try fitting log-log instead
+	=#
+end
+
+# ╔═╡ 912d70d9-7ce1-4528-b7c3-cfe9b8a78455
+begin
+	optimizer_result.minimum #how to further minimize chi_squared?
+	# something goes horribly wrong with object # 40
+end
+
+# ╔═╡ 64be4933-fdc6-4d7d-8483-0406eaa5c975
+begin
+	plot(cm_wvln, df_coadd.flux, label="Observed Spectrum", xlabel="Wavelength (cm)", ylabel="Flux")
+	plot!(cm_wvln, planck(A_optimized, cm_wvln, T_optimized), label="Model Spectrum (T = $T_optimized K)", linestyle=:dash)
 end
 
 # ╔═╡ 410cff5a-4108-454f-b8ff-99d641666989
 flux = planck(1, 10 .^(df_coadd.loglam) .* 10^(-8), 15000)
-
-# ╔═╡ fb87dce4-a4cd-4523-8214-9fee5c436151
-plot(10 .^(df_coadd.loglam) .* 10^(-8), flux)
 
 # ╔═╡ bc44d81f-6312-4edc-9181-678e435c6441
 begin
@@ -2046,8 +2082,11 @@ version = "1.4.1+2"
 # ╟─a57ce818-ec1f-4840-9fb5-c2a67aadd412
 # ╠═740e97fd-ec22-4999-a925-0433eba2a4f6
 # ╠═ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
+# ╠═7318f7ea-74ad-4125-9738-c34fb4d7b27c
+# ╠═04d6d1ab-97ee-47ba-96ba-2c378e4e03cb
+# ╠═912d70d9-7ce1-4528-b7c3-cfe9b8a78455
+# ╠═64be4933-fdc6-4d7d-8483-0406eaa5c975
 # ╠═410cff5a-4108-454f-b8ff-99d641666989
-# ╠═fb87dce4-a4cd-4523-8214-9fee5c436151
 # ╠═bc44d81f-6312-4edc-9181-678e435c6441
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╠═ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
