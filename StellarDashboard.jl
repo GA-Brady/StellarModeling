@@ -42,6 +42,7 @@ end;
 begin
 	# starting all the dependencies
 	using Base.Threads
+	using OrderedCollections
 	using Missings
 	# using Interact
 	using FITSIO
@@ -53,6 +54,8 @@ begin
 	using Tables
 	using CSV
 	using PlutoUI
+	using LsqFit
+	using Optim
 	# using FileIO
 
 	# making directories if they don't already exist
@@ -101,11 +104,61 @@ md"Selected target: $selected_target"
 	md"When you are ready to download the spectrum, click the check box: $(@bind download_target_HDUList CheckBox()) \
 	Click this checkbox to enable verbose output $(@bind HDU_verbose CheckBox(default=true))"
 
+# ╔═╡ ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
+begin
+	#trying to optimize the loss function of data - model
+	function planck(A, wavelength, T)
+		# since we do not necessarily know what the loss due to atmospheric / instrument effects are, Optimize function with some random value of A
+		h = 6.62 * 10^(-27) # erg * s
+		c = 2.99 * 10^(10)  # cm / s
+		k = 1.38 * 10^(-16) # erg / K
+
+		B = A .* (2 * h * c^2) ./ (wavelength.^5) .* 1.0 ./ (exp.((h * c) ./ (wavelength * k * T)) .- 1)
+		return B
+	end
+end
+
 # ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 md""" ### ------ All the Extra Junk ------ """
 
 # ╔═╡ ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
 md"#### Variable Defs to Keep it Clean"
+
+# ╔═╡ 1ad5817e-8a5f-45e4-86dc-17004291a9e1
+#=╠═╡
+begin
+	HDUList = HDUMatrix[HDUMatrix_index];
+end;
+  ╠═╡ =#
+
+# ╔═╡ 6bbabac1-2593-4e66-8e3c-3ce6f7206fbf
+#=╠═╡
+begin
+	COADD_data = FITS(HDUList[2])[2]
+end
+  ╠═╡ =#
+
+# ╔═╡ c3a1a1e7-9e16-4b7a-84b9-9e0b99a00ca9
+#=╠═╡
+begin 
+	# ripping the data from the file
+	COADD_flux = read(COADD_data, "flux"); # flux: 10^-17 erg/s/cm^2/
+	COADD_logλ = read(COADD_data, "loglam");  # log10(lambda)
+	COADD_ivar = read(COADD_data, "ivar"); # 1/sigma^2
+	COADD_a_mask = read(COADD_data, "and_mask"); # bad pixel map
+	COADD_or_mask = read(COADD_data, "and_mask"); # bad pixel map
+	COADD_sky = read(COADD_data, "sky");   # background sky
+	COADD_model = read(COADD_data, "model");   # background sky
+	COADD_flux_sky_corr = COADD_flux .- COADD_sky
+	
+	# masking data based on bad pixel values
+	good_bitmask = (COADD_a_mask .== 0 .&& COADD_flux .> 0)
+	masked_logλ  = COADD_logλ[good_bitmask]
+	masked_flux  = COADD_flux[good_bitmask]
+
+	masked_log_flux = log10.(masked_flux)
+end;
+  ╠═╡ =#
 
 # ╔═╡ d44802f5-c8d1-4678-b34e-92e48b67a90b
 md"#### Coordinates"
@@ -128,42 +181,6 @@ end;
 
 # ╔═╡ d40536f8-eca0-4780-9315-347238ce27a4
 md"#### File Management "
-
-# ╔═╡ cd6a7f57-6c47-4bac-8d12-afc1632c4299
-"""
-function fits_pickler(HDUList::Matrix, dest::AbstractString)
-	FITS(dest, "w") do out_file
-		for file in HDUList
-			opened_file = FITS(file)
-			if length(opened_file) == 1
-
-			end
-		end
-	end
-end
-FITS("combined.fits", "w") do f
-    for (i, file) in enumerate(readdir("Observation_YYYYMMDD", join=true))
-        data = DataFrame(FITS(file)[1])  # Read primary HDU data
-        write(f, data; name="EXT")  # Write to a new extension with a unique name
-    end
-end """
-
-# ╔═╡ 8373cc57-a4ad-466d-921d-493e04bde717
-"""
-begin
-f = FITS(HDUList[1])
-
-test_header = read_header(f[1])
-hkeys = keys(test_header)
-f_test = FITS("test.fits", "w")
-key_values = values(test_header)
-comments = Array{String}(undef, length(key_values), 1)
-
-write_key(f[1], hkeys[1], key_values[1])
-
-f_read = FITS("test.fits", "r")
-get_header(f_read[1])
-end """
 
 # ╔═╡ 2f31b61c-9d20-406e-8306-97b76ede26d5
 function fits_PyToJulia(src::PyObject, dest::AbstractString)
@@ -311,6 +328,7 @@ begin
 		println("Multiple visits, generating $num_visits HDULists")
 		HDUMatrix = Array{Array}(undef, num_visits, 1) # generate a matrix to store the HDULists in
 
+		#=
 		for i in 1:1:num_visits # generating HDULists for each visit
 			extension = "$selected_target"*"-"*"$i"
 			download_dir = download_mkdir(data_dir, extension)
@@ -318,82 +336,51 @@ begin
 			HDUMatrix[i] = async_PyToJulia(target_pyHDUList[i], download_dir, true, HDU_verbose)
 			println("Finished HDUList $i.")
 		end
+		=#
 	end
 end
 
 # ╔═╡ a57ce818-ec1f-4840-9fb5-c2a67aadd412
 	md"Select the HDUList from the download: $(@bind HDUMatrix_index NumberField(1:num_visits)). Available HDULists for target: $num_visits"
 
-# ╔═╡ 1ad5817e-8a5f-45e4-86dc-17004291a9e1
+# ╔═╡ aef87fa2-9a65-48e0-891d-1591c845b3a4
 begin
-	HDUList = HDUMatrix[HDUMatrix_index];
-end;
 
-# ╔═╡ 6bbabac1-2593-4e66-8e3c-3ce6f7206fbf
-begin
-	COADD_data = FITS(HDUList[2])[2]
-end
-
-# ╔═╡ c3a1a1e7-9e16-4b7a-84b9-9e0b99a00ca9
-begin 
-	# ripping the data from the file
-	COADD_flux = read(COADD_data, "flux"); # flux: 10^-17 erg/s/cm^2/
-	COADD_logλ = read(COADD_data, "loglam");  # log10(lambda)
-	COADD_ivar = read(COADD_data, "ivar"); # 1/sigma^2
-	COADD_a_mask = read(COADD_data, "and_mask"); # bad pixel map
-	COADD_or_mask = read(COADD_data, "and_mask"); # bad pixel map
-	COADD_sky = read(COADD_data, "sky");   # background sky
-	COADD_model = read(COADD_data, "model");   # background sky
-	COADD_flux_sky_corr = COADD_flux .- COADD_sky
+	function convert_PyObjectHDU_to_Dict(pyobj::PyObject)
+	OrderedDict{String,Union{Int64,BigInt,Float64,String,Bool}}(collect(pyobj.header.keys()).=>collect(pyobj.header.values()))
+	end
 	
-	# masking data based on bad pixel values
-	good_bitmask = (COADD_a_mask .== 0 .&& COADD_flux .> 0)
-	masked_logλ  = COADD_logλ[good_bitmask]
-	masked_flux  = COADD_flux[good_bitmask]
-
-	masked_log_flux = log10.(masked_flux)
-end;
-
-# ╔═╡ a8ec2b2e-de1a-47b2-a805-5f3f4c7a171a
-begin
-	p = fit(masked_logλ, masked_log_flux, 3)
-	continuum_fit = p.(masked_logλ)
-
-	# Plot spectrum with continuum fit
-	plot(masked_logλ, masked_log_flux, label="Spectrum")
-	plot!(masked_logλ, continuum_fit, label="Continuum Fit", linestyle=:dash)
+	function convert_PyObjectHDU_to_FITSHeader(pyobj::PyObject)
+	FITSHeader(convert.(String,collect(pyobj.header.keys())),collect(pyobj.header.values()),convert.(String,pyobj.header.comments))
+	end
+	
+	function read_PyObject_HDU(pyobj::PyObject)
+	DataFrame(map(n->pyobj.data.field(n).tolist(),pyobj.data.columns.names),pyobj.data.columns.names)
+	end
 end
+
+# ╔═╡ 740e97fd-ec22-4999-a925-0433eba2a4f6
+begin
+	file_id = HDUMatrix_index
+	
+	fits_headers_as_dict = convert_PyObjectHDU_to_Dict.(vec(target_pyHDUList[file_id]));
+	
+	fits_headers = convert_PyObjectHDU_to_FITSHeader.(vec(target_pyHDUList[file_id]));
+	
+	hdu_to_read = vec(target_pyHDUList[file_id])[2];
+	
+	df_coadd = read_PyObject_HDU(hdu_to_read)
+end
+
+# ╔═╡ 410cff5a-4108-454f-b8ff-99d641666989
+flux = planck(1, 10 .^(df_coadd.loglam) .* 10^(-8), 15000)
+
+# ╔═╡ fb87dce4-a4cd-4523-8214-9fee5c436151
+plot(10 .^(df_coadd.loglam) .* 10^(-8), flux)
 
 # ╔═╡ bc44d81f-6312-4edc-9181-678e435c6441
 begin
-	plot(COADD_logλ, COADD_model)
-end
-
-# ╔═╡ aef87fa2-9a65-48e0-891d-1591c845b3a4
-begin
-using OrderedCollections
-
-function convert_PyObjectHDU_to_Dict(pyobj::PyObject)
-OrderedDict{String,Union{Int64,BigInt,Float64,String,Bool}}(collect(pyobj.header.keys()).=>collect(pyobj.header.values()))
-end
-
-function convert_PyObjectHDU_to_FITSHeader(pyobj::PyObject)
-FITSHeader(convert.(String,collect(pyobj.header.keys())),collect(pyobj.header.values()),convert.(String,pyobj.header.comments))
-end
-
-function read_PyObject_HDU(pyobj::PyObject)
-DataFrame(map(n->pyobj.data.field(n).tolist(),pyobj.data.columns.names),pyobj.data.columns.names)
-end
-
-file_id = 1
-
-fits_headers_as_dict = convert_PyObjectHDU_to_Dict.(vec(target_pyHDUList[file_id]));
-
-fits_headers = convert_PyObjectHDU_to_FITSHeader.(vec(target_pyHDUList[file_id]));
-
-hdu_to_read = vec(target_pyHDUList[file_id])[2];
-
-df_coadd = read_PyObject_HDU(hdu_to_read)
+	plot(10 .^(df_coadd.loglam) .* 10^(-8), df_coadd.model)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -404,7 +391,9 @@ CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 FITSIO = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
 FilePaths = "8fc22ac5-c921-52a6-82fd-178b2807b824"
+LsqFit = "2fda8390-95c7-5789-9bda-21331edee243"
 Missings = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
+Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
@@ -418,7 +407,9 @@ CSV = "~0.10.15"
 DataFrames = "~1.7.0"
 FITSIO = "~0.17.4"
 FilePaths = "~0.8.3"
+LsqFit = "~0.15.0"
 Missings = "~1.2.0"
+Optim = "~1.10.0"
 OrderedCollections = "~1.8.0"
 Plots = "~1.40.9"
 PlutoUI = "~0.7.23"
@@ -433,13 +424,27 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "849217cd0223454da5c4005ec6583daa7567515d"
+project_hash = "bcbf921bf6b3974e447935bfd11c3024a6c96888"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
 git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
 uuid = "6e696c72-6542-2067-7265-42206c756150"
 version = "1.3.2"
+
+[[deps.Adapt]]
+deps = ["LinearAlgebra", "Requires"]
+git-tree-sha1 = "f7817e2e585aa6d924fd714df1e2a84be7896c60"
+uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+version = "4.3.0"
+
+    [deps.Adapt.extensions]
+    AdaptSparseArraysExt = "SparseArrays"
+    AdaptStaticArraysExt = "StaticArrays"
+
+    [deps.Adapt.weakdeps]
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.AliasTables]]
 deps = ["PtrArrays", "Random"]
@@ -450,6 +455,38 @@ version = "1.1.3"
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
 version = "1.1.2"
+
+[[deps.ArrayInterface]]
+deps = ["Adapt", "LinearAlgebra"]
+git-tree-sha1 = "017fcb757f8e921fb44ee063a7aafe5f89b86dd1"
+uuid = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
+version = "7.18.0"
+
+    [deps.ArrayInterface.extensions]
+    ArrayInterfaceBandedMatricesExt = "BandedMatrices"
+    ArrayInterfaceBlockBandedMatricesExt = "BlockBandedMatrices"
+    ArrayInterfaceCUDAExt = "CUDA"
+    ArrayInterfaceCUDSSExt = "CUDSS"
+    ArrayInterfaceChainRulesCoreExt = "ChainRulesCore"
+    ArrayInterfaceChainRulesExt = "ChainRules"
+    ArrayInterfaceGPUArraysCoreExt = "GPUArraysCore"
+    ArrayInterfaceReverseDiffExt = "ReverseDiff"
+    ArrayInterfaceSparseArraysExt = "SparseArrays"
+    ArrayInterfaceStaticArraysCoreExt = "StaticArraysCore"
+    ArrayInterfaceTrackerExt = "Tracker"
+
+    [deps.ArrayInterface.weakdeps]
+    BandedMatrices = "aae01518-5342-5314-be14-df237901396f"
+    BlockBandedMatrices = "ffab5731-97b5-5995-9138-79e8c1846df0"
+    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+    CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
+    ChainRules = "082447d4-558c-5d27-93f4-14fc19e9eca2"
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    GPUArraysCore = "46192b85-c4d5-4398-a991-12ede77f4527"
+    ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    StaticArraysCore = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
+    Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -523,18 +560,22 @@ deps = ["ColorTypes", "FixedPointNumbers", "LinearAlgebra", "Requires", "Statist
 git-tree-sha1 = "a1f44953f2382ebb937d60dafbe2deea4bd23249"
 uuid = "c3611d14-8923-5661-9e6a-0046d554d3a4"
 version = "0.10.0"
+weakdeps = ["SpecialFunctions"]
 
     [deps.ColorVectorSpace.extensions]
     SpecialFunctionsExt = "SpecialFunctions"
-
-    [deps.ColorVectorSpace.weakdeps]
-    SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 
 [[deps.Colors]]
 deps = ["ColorTypes", "FixedPointNumbers", "Reexport"]
 git-tree-sha1 = "362a287c3aa50601b0bc359053d5c2468f0e7ce0"
 uuid = "5ae59095-9a9b-59fe-a467-6f913c188581"
 version = "0.12.11"
+
+[[deps.CommonSubexpressions]]
+deps = ["MacroTools"]
+git-tree-sha1 = "cda2cfaebb4be89c9084adaca7dd7333369715c5"
+uuid = "bbf7d656-a473-5ed7-a52c-81e309532950"
+version = "0.3.1"
 
 [[deps.Compat]]
 deps = ["TOML", "UUIDs"]
@@ -627,6 +668,39 @@ git-tree-sha1 = "9e2f36d3c96a820c678f2f1f1782582fcf685bae"
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 version = "1.9.1"
 
+[[deps.DiffResults]]
+deps = ["StaticArraysCore"]
+git-tree-sha1 = "782dd5f4561f5d267313f23853baaaa4c52ea621"
+uuid = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
+version = "1.1.0"
+
+[[deps.DiffRules]]
+deps = ["IrrationalConstants", "LogExpFunctions", "NaNMath", "Random", "SpecialFunctions"]
+git-tree-sha1 = "23163d55f885173722d1e4cf0f6110cdbaf7e272"
+uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
+version = "1.15.1"
+
+[[deps.Distributed]]
+deps = ["Random", "Serialization", "Sockets"]
+uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+version = "1.11.0"
+
+[[deps.Distributions]]
+deps = ["AliasTables", "FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns"]
+git-tree-sha1 = "0b4190661e8a4e51a842070e7dd4fae440ddb7f4"
+uuid = "31c24e10-a181-5473-b8eb-7969acd0382f"
+version = "0.25.118"
+
+    [deps.Distributions.extensions]
+    DistributionsChainRulesCoreExt = "ChainRulesCore"
+    DistributionsDensityInterfaceExt = "DensityInterface"
+    DistributionsTestExt = "Test"
+
+    [deps.Distributions.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    DensityInterface = "b429d917-457f-4dbc-8f4c-0cc954292b1d"
+    Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
 [[deps.DocStringExtensions]]
 deps = ["LibGit2"]
 git-tree-sha1 = "2fb1e02f2b635d0845df5d7c167fec4dd739b00d"
@@ -695,6 +769,36 @@ weakdeps = ["Mmap", "Test"]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 version = "1.11.0"
 
+[[deps.FillArrays]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "6a70198746448456524cb442b8af316927ff3e1a"
+uuid = "1a297f60-69ca-5386-bcde-b61e274b549b"
+version = "1.13.0"
+weakdeps = ["PDMats", "SparseArrays", "Statistics"]
+
+    [deps.FillArrays.extensions]
+    FillArraysPDMatsExt = "PDMats"
+    FillArraysSparseArraysExt = "SparseArrays"
+    FillArraysStatisticsExt = "Statistics"
+
+[[deps.FiniteDiff]]
+deps = ["ArrayInterface", "LinearAlgebra", "Setfield"]
+git-tree-sha1 = "f089ab1f834470c525562030c8cfde4025d5e915"
+uuid = "6a86dc24-6348-571c-b903-95158fe2bd41"
+version = "2.27.0"
+
+    [deps.FiniteDiff.extensions]
+    FiniteDiffBandedMatricesExt = "BandedMatrices"
+    FiniteDiffBlockBandedMatricesExt = "BlockBandedMatrices"
+    FiniteDiffSparseArraysExt = "SparseArrays"
+    FiniteDiffStaticArraysExt = "StaticArrays"
+
+    [deps.FiniteDiff.weakdeps]
+    BandedMatrices = "aae01518-5342-5314-be14-df237901396f"
+    BlockBandedMatrices = "ffab5731-97b5-5995-9138-79e8c1846df0"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
 [[deps.FixedPointNumbers]]
 deps = ["Statistics"]
 git-tree-sha1 = "05882d6995ae5c12bb5f36dd2ed3f61c98cbb172"
@@ -711,6 +815,18 @@ version = "2.15.0+0"
 git-tree-sha1 = "9c68794ef81b08086aeb32eeaf33531668d5f5fc"
 uuid = "1fa38f19-a742-5d3f-a2b9-30dd87b9d5f8"
 version = "1.3.7"
+
+[[deps.ForwardDiff]]
+deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "LinearAlgebra", "LogExpFunctions", "NaNMath", "Preferences", "Printf", "Random", "SpecialFunctions"]
+git-tree-sha1 = "a2df1b776752e3f344e5116c06d75a10436ab853"
+uuid = "f6369f11-7733-5829-9624-2563aa707210"
+version = "0.10.38"
+
+    [deps.ForwardDiff.extensions]
+    ForwardDiffStaticArraysExt = "StaticArrays"
+
+    [deps.ForwardDiff.weakdeps]
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.FreeType2_jll]]
 deps = ["Artifacts", "Bzip2_jll", "JLLWrappers", "Libdl", "Zlib_jll"]
@@ -781,6 +897,12 @@ deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll",
 git-tree-sha1 = "55c53be97790242c29031e5cd45e8ac296dadda3"
 uuid = "2e76f6c2-a576-52d4-95c1-20adfe4de566"
 version = "8.5.0+0"
+
+[[deps.HypergeometricFunctions]]
+deps = ["LinearAlgebra", "OpenLibm_jll", "SpecialFunctions"]
+git-tree-sha1 = "68c173f4f449de5b438ee67ed0c9c748dc31a2ec"
+uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
+version = "0.3.28"
 
 [[deps.Hyperscript]]
 deps = ["Test"]
@@ -979,6 +1101,12 @@ git-tree-sha1 = "e888ad02ce716b319e6bdb985d2ef300e7089889"
 uuid = "38a345b3-de98-5d2b-a5d3-14cd9215e700"
 version = "2.40.3+0"
 
+[[deps.LineSearches]]
+deps = ["LinearAlgebra", "NLSolversBase", "NaNMath", "Parameters", "Printf"]
+git-tree-sha1 = "e4c3be53733db1051cc15ecf573b1042b3a712a1"
+uuid = "d3d80556-e9d4-5f37-9878-2ab0fcc64255"
+version = "7.3.0"
+
 [[deps.LinearAlgebra]]
 deps = ["Libdl", "OpenBLAS_jll", "libblastrampoline_jll"]
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -1009,6 +1137,12 @@ deps = ["Dates", "Logging"]
 git-tree-sha1 = "f02b56007b064fbfddb4c9cd60161b6dd0f40df3"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 version = "1.1.0"
+
+[[deps.LsqFit]]
+deps = ["Distributions", "ForwardDiff", "LinearAlgebra", "NLSolversBase", "Printf", "StatsAPI"]
+git-tree-sha1 = "40acc20cfb253cf061c1a2a2ea28de85235eeee1"
+uuid = "2fda8390-95c7-5789-9bda-21331edee243"
+version = "0.15.0"
 
 [[deps.MacroTools]]
 git-tree-sha1 = "72aebe0b5051e5143a079a4685a46da330a40472"
@@ -1050,6 +1184,12 @@ version = "1.11.0"
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 version = "2023.12.12"
 
+[[deps.NLSolversBase]]
+deps = ["DiffResults", "Distributed", "FiniteDiff", "ForwardDiff"]
+git-tree-sha1 = "a0b464d183da839699f4c79e7606d9d186ec172c"
+uuid = "d41bc354-129a-5804-8e4c-c37616107c6c"
+version = "7.8.3"
+
 [[deps.NaNMath]]
 deps = ["OpenLibm_jll"]
 git-tree-sha1 = "cc0a5deefdb12ab3a096f00a6d42133af4560d71"
@@ -1088,6 +1228,24 @@ git-tree-sha1 = "a9697f1d06cc3eb3fb3ad49cc67f2cfabaac31ea"
 uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
 version = "3.0.16+0"
 
+[[deps.OpenSpecFun_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "1346c9208249809840c91b26703912dff463d335"
+uuid = "efe28fd5-8261-553b-a9e1-b2916fc3738e"
+version = "0.5.6+0"
+
+[[deps.Optim]]
+deps = ["Compat", "FillArrays", "ForwardDiff", "LineSearches", "LinearAlgebra", "NLSolversBase", "NaNMath", "Parameters", "PositiveFactorizations", "Printf", "SparseArrays", "StatsBase"]
+git-tree-sha1 = "ab7edad78cdef22099f43c54ef77ac63c2c9cc64"
+uuid = "429524aa-4258-5aef-a3af-852621145aeb"
+version = "1.10.0"
+
+    [deps.Optim.extensions]
+    OptimMOIExt = "MathOptInterface"
+
+    [deps.Optim.weakdeps]
+    MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+
 [[deps.Opus_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "6703a85cb3781bd5909d48730a67205f3f31a575"
@@ -1104,11 +1262,23 @@ deps = ["Artifacts", "Libdl"]
 uuid = "efcefdf7-47ab-520b-bdef-62a2eaa19f15"
 version = "10.42.0+1"
 
+[[deps.PDMats]]
+deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
+git-tree-sha1 = "966b85253e959ea89c53a9abebbf2e964fbf593b"
+uuid = "90014a1f-27ba-587c-ab20-58faa44d9150"
+version = "0.11.32"
+
 [[deps.Pango_jll]]
 deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "FriBidi_jll", "Glib_jll", "HarfBuzz_jll", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "3b31172c032a1def20c98dae3f2cdc9d10e3b561"
 uuid = "36c8627f-9965-5494-a995-c6b170f724f3"
 version = "1.56.1+0"
+
+[[deps.Parameters]]
+deps = ["OrderedCollections", "UnPack"]
+git-tree-sha1 = "34c0e9ad262e5f7fc75b10a9952ca7692cfc5fbe"
+uuid = "d96e819e-fc66-5662-9728-84c9c7592b0a"
+version = "0.12.3"
 
 [[deps.Parsers]]
 deps = ["Dates", "PrecompileTools", "UUIDs"]
@@ -1198,6 +1368,12 @@ git-tree-sha1 = "36d8b4b899628fb92c2749eb488d884a926614d3"
 uuid = "2dfb63ee-cc39-5dd5-95bd-886bf059d720"
 version = "1.4.3"
 
+[[deps.PositiveFactorizations]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "17275485f373e6673f7e7f97051f703ed5b15b20"
+uuid = "85a6dd25-e78a-55b7-8502-1745935b8125"
+version = "0.2.4"
+
 [[deps.PrecompileTools]]
 deps = ["Preferences"]
 git-tree-sha1 = "5aa36f7049a63a1528fe8f7c3f2113413ffd4e1f"
@@ -1260,6 +1436,18 @@ git-tree-sha1 = "729927532d48cf79f49070341e1d918a65aba6b0"
 uuid = "e99dba38-086e-5de3-a5b1-6e4c66e897c3"
 version = "6.7.1+1"
 
+[[deps.QuadGK]]
+deps = ["DataStructures", "LinearAlgebra"]
+git-tree-sha1 = "9da16da70037ba9d701192e27befedefb91ec284"
+uuid = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
+version = "2.11.2"
+
+    [deps.QuadGK.extensions]
+    QuadGKEnzymeExt = "Enzyme"
+
+    [deps.QuadGK.weakdeps]
+    Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+
 [[deps.REPL]]
 deps = ["InteractiveUtils", "Markdown", "Sockets", "StyledStrings", "Unicode"]
 uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
@@ -1298,6 +1486,18 @@ deps = ["UUIDs"]
 git-tree-sha1 = "62389eeff14780bfe55195b7204c0d8738436d64"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "1.3.1"
+
+[[deps.Rmath]]
+deps = ["Random", "Rmath_jll"]
+git-tree-sha1 = "852bd0f55565a9e973fcfee83a84413270224dc4"
+uuid = "79098fc4-a85e-5d69-aa6a-4863f24498fa"
+version = "0.8.0"
+
+[[deps.Rmath_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "58cdd8fb2201a6267e1db87ff148dd6c1dbd8ad8"
+uuid = "f50d1b31-88e8-58de-be2c-1cc44531875f"
+version = "0.5.1+0"
 
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
@@ -1351,6 +1551,18 @@ deps = ["Libdl", "LinearAlgebra", "Random", "Serialization", "SuiteSparse_jll"]
 uuid = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 version = "1.11.0"
 
+[[deps.SpecialFunctions]]
+deps = ["IrrationalConstants", "LogExpFunctions", "OpenLibm_jll", "OpenSpecFun_jll"]
+git-tree-sha1 = "64cca0c26b4f31ba18f13f6c12af7c85f478cfde"
+uuid = "276daf66-3868-5448-9aa4-cd146d93841b"
+version = "2.5.0"
+
+    [deps.SpecialFunctions.extensions]
+    SpecialFunctionsChainRulesCoreExt = "ChainRulesCore"
+
+    [deps.SpecialFunctions.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+
 [[deps.StableRNGs]]
 deps = ["Random"]
 git-tree-sha1 = "83e6cce8324d49dfaf9ef059227f91ed4441a8e5"
@@ -1384,6 +1596,20 @@ git-tree-sha1 = "29321314c920c26684834965ec2ce0dacc9cf8e5"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 version = "0.34.4"
 
+[[deps.StatsFuns]]
+deps = ["HypergeometricFunctions", "IrrationalConstants", "LogExpFunctions", "Reexport", "Rmath", "SpecialFunctions"]
+git-tree-sha1 = "b423576adc27097764a90e163157bcfc9acf0f46"
+uuid = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
+version = "1.3.2"
+
+    [deps.StatsFuns.extensions]
+    StatsFunsChainRulesCoreExt = "ChainRulesCore"
+    StatsFunsInverseFunctionsExt = "InverseFunctions"
+
+    [deps.StatsFuns.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    InverseFunctions = "3587e190-3f89-42d0-90ee-14403ec27112"
+
 [[deps.StringManipulation]]
 deps = ["PrecompileTools"]
 git-tree-sha1 = "725421ae8e530ec29bcbdddbe91ff8053421d023"
@@ -1393,6 +1619,10 @@ version = "0.4.1"
 [[deps.StyledStrings]]
 uuid = "f489334b-da3d-4c2e-b8f0-e476e12c162b"
 version = "1.11.0"
+
+[[deps.SuiteSparse]]
+deps = ["Libdl", "LinearAlgebra", "Serialization", "SparseArrays"]
+uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
 [[deps.SuiteSparse_jll]]
 deps = ["Artifacts", "Libdl", "libblastrampoline_jll"]
@@ -1451,6 +1681,11 @@ version = "1.5.1"
 deps = ["Random", "SHA"]
 uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 version = "1.11.0"
+
+[[deps.UnPack]]
+git-tree-sha1 = "387c1f73762231e86e0c9c5443ce3b4a0a9a0c2b"
+uuid = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
+version = "1.0.2"
 
 [[deps.Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
@@ -1807,9 +2042,12 @@ version = "1.4.1+2"
 # ╟─061e7bdb-aa45-4519-9df2-9889848f3bb4
 # ╟─6aeb9e34-a1ce-4eb8-a88e-548e12d1e692
 # ╟─b80a5889-6309-4218-9857-921b7488a8af
-# ╠═ac5d4861-8af7-47f4-8bab-cd05daaabce5
+# ╟─ac5d4861-8af7-47f4-8bab-cd05daaabce5
 # ╟─a57ce818-ec1f-4840-9fb5-c2a67aadd412
-# ╠═a8ec2b2e-de1a-47b2-a805-5f3f4c7a171a
+# ╠═740e97fd-ec22-4999-a925-0433eba2a4f6
+# ╠═ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
+# ╠═410cff5a-4108-454f-b8ff-99d641666989
+# ╠═fb87dce4-a4cd-4523-8214-9fee5c436151
 # ╠═bc44d81f-6312-4edc-9181-678e435c6441
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╠═ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
@@ -1820,8 +2058,6 @@ version = "1.4.1+2"
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
 # ╠═1ad89925-9707-497f-b682-9f509910d361
 # ╟─d40536f8-eca0-4780-9315-347238ce27a4
-# ╠═cd6a7f57-6c47-4bac-8d12-afc1632c4299
-# ╠═8373cc57-a4ad-466d-921d-493e04bde717
 # ╠═2f31b61c-9d20-406e-8306-97b76ede26d5
 # ╠═4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
 # ╠═8394e0d5-fb2b-4402-a6e5-ab00bbd41dfc
