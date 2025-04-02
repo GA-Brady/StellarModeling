@@ -114,7 +114,7 @@ begin
 		c = 2.99 * 10^(10)  # cm / s
 		k = 1.38 * 10^(-16) # erg / K
 
-		B = A .* (2 * h * c^2) ./ (wavelength.^5) .* 1.0 ./ (exp.((h * c) ./ (wavelength * k * T)) .- 1) .+ C
+		B = A ./ (wavelength.^5) .* 1.0 ./ (exp.((h * c) ./ (wavelength * k * T)) .- 1) .+ C
 		return B
 	end
 end
@@ -362,13 +362,21 @@ fits_headers[1]
 begin
 	# Applying filters to the data-frame, user choice on how to clean?
 	ivar_threshold = 1
-
-	remove_negative_flux = true
 	remove_ivar  = false
-	use_and_mask = true
-	use_or_mask  = true
+
+	remove_edges = true
+	boundary     = [3.6, 3.950] # sets the lower and upper limits for a wavelength to be included
+
+	remove_negative_flux = true # necessary for linear model
+	
+	use_and_mask = true # removes flagged pixels
+	use_or_mask  = true 
 	
 	df_filtered = df_coadd |> 
+		df_coadd -> if remove_edges
+			filter(:loglam => x -> boundary[1] <= x <= boundary[2], df_coadd)
+		else df_coadd end |>
+		
 		df_coadd -> if remove_negative_flux
 			filter(:flux => x -> x >= 0, df_coadd)
 		else df_coadd end |>
@@ -386,7 +394,59 @@ begin
 		else df_coadd end
 
 	cm_wvln  = 10 .^ (df_filtered.loglam) * 10^(-8);
+end;
+
+# ╔═╡ aeff15f4-d974-42f1-b2a8-9aabbe10448f
+describe(df_filtered)
+
+# ╔═╡ 29485c7e-0b1b-4f36-bd5b-0391098389eb
+begin
+	df_train = df_filtered[1:2:nrow(df_filtered), :]
+	df_test  = df_filtered[2:2:nrow(df_filtered), :]
 end
+
+# ╔═╡ ad57ca38-e8cd-4531-a02d-e5a0079221b4
+begin
+	scatter(df_train.loglam, df_train.flux, color = "red", markersize =2)
+	scatter!(df_test.loglam, df_test.flux, color ="blue", markersize =2)
+end
+
+# ╔═╡ 09535e11-cdd0-4bba-8b47-aca83adff456
+begin #linearized model
+	function linearized_planck(A, λ, T, C)
+		h = 6.62 * 10^(-27) # erg * s
+		c = 2.99 * 10^(10)  # cm / s
+		k = 1.38 * 10^(-16) # erg / K
+
+		local wvln = 10 .^ (λ) .* 10^(-8) 
+		lb = log10(A) .- 5 .* λ .- ((h * c) ./ (wvln .* k .* T)) .+ C
+		return lb
+	end
+	
+	function linear_f(x::AbstractVector)
+		log_flux = log10.(df_train.flux)
+			
+		model = linearized_planck(x[1], df_train.loglam, x[2], x[3])
+		χ_squared = df_train.ivar .* (log_flux - model) .^2
+		return sum(χ_squared)
+	end
+end
+
+# ╔═╡ 1bc908e1-6f09-478a-9b52-7e7872770480
+begin
+	linear_results = optimize(linear_f, [1., 16000, 100])
+	A_lin, T_lin, C_lin  = linear_results.minimizer
+	linear_results.minimum
+end
+
+# ╔═╡ 5e79ef60-4020-43bc-b9a6-dc4da825dd14
+T_lin
+
+# ╔═╡ 0d9641b2-92d2-4657-8f18-89d9b6dc7a13
+sum(log10.(df_test.flux) .- linearized_planck(A_lin, df_test.loglam, T_lin, C_lin)) .^2 / nrow(df_test)
+
+# ╔═╡ a4dba851-8852-4385-bbbe-232caa67882a
+plot(df_filtered.loglam, df_filtered.ivar)
 
 # ╔═╡ 7318f7ea-74ad-4125-9738-c34fb4d7b27c
 begin
@@ -399,7 +459,7 @@ end
 
 # ╔═╡ 04d6d1ab-97ee-47ba-96ba-2c378e4e03cb
 begin
-	optimizer_result = optimize(f, [1., 20000, 0])
+	optimizer_result = optimize(f, [1., 22000, 0])
 	optimized_params = optimizer_result.minimizer
 	A_optimized = optimized_params[1]
 	T_optimized = optimized_params[2]
@@ -416,6 +476,12 @@ end
 begin
 	optimizer_result.minimum #how to further minimize chi_squared?
 	# something goes horribly wrong with object # 40
+end
+
+# ╔═╡ 3842d6a8-3e8d-4b78-8273-d00da19a16cd
+begin
+	plot(df_filtered.loglam, log10.(df_filtered.flux))
+	plot!(df_filtered.loglam, linearized_planck(A_lin, df_filtered.loglam, T_lin, C_lin))
 end
 
 # ╔═╡ 64be4933-fdc6-4d7d-8483-0406eaa5c975
@@ -450,38 +516,6 @@ plot!(10 .^ df_filtered.loglam, planck(A_optimized, cm_wvln, T_optimized, 1),
     legend=:topright)
 end
 
-
-# ╔═╡ 8e953fa4-ffaf-4603-8f00-ec9616e60677
-begin
-	# building a linearized model in wein's limit
-	Åλ = 10 .^ df_filtered.loglam
-	ln_flux = log.((df_filtered.flux .* 10^(17) .* Åλ .^5))
-
-	function linear_f(x::AbstractVector)
-		model = linear_planck(x[1], (10 .^ df_filtered.loglam) * 10 ^( -8), x[2], x[3])
-		χ_squared = (ln_flux .- model) .^2
-		return sum(χ_squared)
-	end
-
-	function linear_planck(A, wavelength, T, C)
-		# since we do not necessarily know what the loss due to atmospheric / instrument effects are, Optimize function with some random value of A
-		h = 6.62 * 10^(-27) # erg * s
-		c = 2.99 * 10^(10)  # cm / s
-		k = 1.38 * 10^(-16) # erg / K
-
-		B = - log(A * h * c^2) * h * c ./ (wavelength .* k .* T)
-		return B
-	end
-
-	linear_result = optimize(linear_f, [1., 20000, 0])
-	linear_params = optimizer_result.minimizer
-	A_lin = optimized_params[1]
-	T_lin = optimized_params[2]
-	# C_lin = optimized_params[3]
-end
-
-# ╔═╡ 410c52ab-9945-4006-9795-fba5b6d1f78e
-linear_result.minimum
 
 # ╔═╡ f361457a-729a-408d-abf3-f7789a939367
 smoothed_flux = smooth_data(df_coadd.flux)
@@ -2152,8 +2186,17 @@ version = "1.4.1+2"
 # ╠═0c941b57-c185-4242-912f-c4afc03d4061
 # ╠═740e97fd-ec22-4999-a925-0433eba2a4f6
 # ╠═7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
+# ╟─aeff15f4-d974-42f1-b2a8-9aabbe10448f
+# ╠═29485c7e-0b1b-4f36-bd5b-0391098389eb
+# ╠═ad57ca38-e8cd-4531-a02d-e5a0079221b4
+# ╠═a4dba851-8852-4385-bbbe-232caa67882a
 # ╠═ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
 # ╠═7318f7ea-74ad-4125-9738-c34fb4d7b27c
+# ╠═09535e11-cdd0-4bba-8b47-aca83adff456
+# ╠═1bc908e1-6f09-478a-9b52-7e7872770480
+# ╠═0d9641b2-92d2-4657-8f18-89d9b6dc7a13
+# ╠═5e79ef60-4020-43bc-b9a6-dc4da825dd14
+# ╠═3842d6a8-3e8d-4b78-8273-d00da19a16cd
 # ╠═04d6d1ab-97ee-47ba-96ba-2c378e4e03cb
 # ╠═912d70d9-7ce1-4528-b7c3-cfe9b8a78455
 # ╠═64be4933-fdc6-4d7d-8483-0406eaa5c975
@@ -2161,8 +2204,6 @@ version = "1.4.1+2"
 # ╠═f361457a-729a-408d-abf3-f7789a939367
 # ╠═ca976ab7-508b-4009-9101-13386c2c4174
 # ╟─8ccfd9c9-9fef-433e-b593-4a8117e32976
-# ╠═8e953fa4-ffaf-4603-8f00-ec9616e60677
-# ╠═410c52ab-9945-4006-9795-fba5b6d1f78e
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╠═ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
 # ╟─d44802f5-c8d1-4678-b34e-92e48b67a90b
