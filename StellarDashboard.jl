@@ -353,31 +353,46 @@ begin
 	hdu_to_read = vec(target_pyHDUList[file_id])[2];
 	
 	df_coadd = read_PyObject_HDU(hdu_to_read)
-
-	cm_wvln  = 10 .^ (df_coadd.loglam) * 10^(-8);
-
-	df_coadd
-end
+end;
 
 # ╔═╡ 0c941b57-c185-4242-912f-c4afc03d4061
 fits_headers[1]
 
-# ╔═╡ d2aa3adc-a717-41e4-aca9-503f6d4949c5
-begin 
-	df_filtered = filter(:flux => x -> x > 0, df_coadd)
-	describe(df_filtered)
-end
-
-# ╔═╡ bc44d81f-6312-4edc-9181-678e435c6441
+# ╔═╡ 7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
 begin
-	plot(df_filtered.loglam, (df_filtered.ivar))
+	# Applying filters to the data-frame, user choice on how to clean?
+	ivar_threshold = 1
+
+	remove_negative_flux = true
+	remove_ivar  = false
+	use_and_mask = true
+	use_or_mask  = true
+	
+	df_filtered = df_coadd |> 
+		df_coadd -> if remove_negative_flux
+			filter(:flux => x -> x >= 0, df_coadd)
+		else df_coadd end |>
+		
+		df_coadd -> if remove_ivar
+			filter(:ivar => x -> x > ivar_threshold, df_coadd) 
+		else df_coadd end |>
+
+		df_coadd -> if use_and_mask
+			filter(:and_mask => x -> x == 0, df_coadd)
+		else df_coadd end |>
+
+		df_coadd -> if use_or_mask
+			filter(:or_mask => x -> x == 0, df_coadd)
+		else df_coadd end
+
+	cm_wvln  = 10 .^ (df_filtered.loglam) * 10^(-8);
 end
 
 # ╔═╡ 7318f7ea-74ad-4125-9738-c34fb4d7b27c
 begin
 	function f(x::AbstractVector)
 		model = planck(x[1], cm_wvln, x[2], x[3])
-		χ_squared = df_coadd.ivar .* (df_coadd.flux .* 10^(17) .- model) .^2
+		χ_squared = df_filtered.ivar .* (df_filtered.flux .* 10^(17) .- model) .^2
 		return sum(χ_squared)
 	end
 end
@@ -388,7 +403,7 @@ begin
 	optimized_params = optimizer_result.minimizer
 	A_optimized = optimized_params[1]
 	T_optimized = optimized_params[2]
-	C_optimized = optimized_params[3]
+	C_optimized = optimized_params[3];
 
 	#=
 	future optimizer plans:
@@ -403,6 +418,39 @@ begin
 	# something goes horribly wrong with object # 40
 end
 
+# ╔═╡ 64be4933-fdc6-4d7d-8483-0406eaa5c975
+begin
+	plot(10 .^ df_filtered.loglam, df_filtered.flux .* 10^(17), label="Observed Spectrum", xlabel="Wavelength (Å)", ylabel="Flux")
+	plot!(10 .^ df_filtered.loglam, planck(A_optimized, cm_wvln, T_optimized, C_optimized), label="Model Spectrum (T = $T_optimized K)", linestyle=:dash)
+end
+
+# ╔═╡ 8e039816-a06a-4f79-bf77-d1ea7f60d3f2
+begin
+plot(10 .^ df_filtered.loglam, df_filtered.flux .* 10^(17), 
+    xscale=:log10,  # Log scale for x-axis 
+    yscale=:log10,  # Log scale for y-axis
+    xlabel="x (log scale)", 
+    ylabel="y (log scale)",
+    title="Log-Log Plot Example",
+    label="y = x²",
+    markersize=3,
+    linewidth=2,
+    legend=:topleft)
+plot!(10 .^ df_filtered.loglam, planck(A_optimized, cm_wvln, T_optimized, 1), 
+    xscale=:log10,  # Log scale for x-axis 
+    yscale=:log10,  # Log scale for y-axis
+    xlabel="x (log scale)", 
+    ylabel="y (log scale)",
+    title="Log-Log Plot Example",
+    label="y = x²",
+    markersize=3,
+	color="red",
+    linewidth=2,
+	linestyle=:dash,
+    legend=:topright)
+end
+
+
 # ╔═╡ 8e953fa4-ffaf-4603-8f00-ec9616e60677
 begin
 	# building a linearized model in wein's limit
@@ -410,7 +458,7 @@ begin
 	ln_flux = log.((df_filtered.flux .* 10^(17) .* Åλ .^5))
 
 	function linear_f(x::AbstractVector)
-		model = linear_planck(x[1], (10 .^ df_filtered.loglam) * 10 ^( -7), x[2], x[3])
+		model = linear_planck(x[1], (10 .^ df_filtered.loglam) * 10 ^( -8), x[2], x[3])
 		χ_squared = (ln_flux .- model) .^2
 		return sum(χ_squared)
 	end
@@ -432,21 +480,11 @@ begin
 	# C_lin = optimized_params[3]
 end
 
-# ╔═╡ 64be4933-fdc6-4d7d-8483-0406eaa5c975
-begin
-	plot(10 .^ df_coadd.loglam, df_coadd.flux .* 10^(17), label="Observed Spectrum", xlabel="Wavelength (Å)", ylabel="Flux")
-	plot!(10 .^ df_coadd.loglam, planck(A_optimized, cm_wvln, T_optimized, C_optimized), label="Model Spectrum (T = $T_optimized K)", linestyle=:dash)
-end
+# ╔═╡ 410c52ab-9945-4006-9795-fba5b6d1f78e
+linear_result.minimum
 
 # ╔═╡ f361457a-729a-408d-abf3-f7789a939367
 smoothed_flux = smooth_data(df_coadd.flux)
-
-# ╔═╡ 3b347662-5e0e-414c-9820-0ecd615b8c05
-begin # experimenting with better plots
-	plot(10 .^ df_coadd.loglam, smoothed_flux .* 10^(17), label="Observed Spectrum", xlabel="Wavelength (Å)", ylabel="Flux")
-	plot!(10 .^ df_coadd.loglam, smoothed_flux .* 10^(17), yerr = df_coadd.ivar .^(-1/2) .* 10^(17), label="Observed Spectrum", xlabel="Wavelength (Å)", ylabel="Flux", alpha = 0.3)
-	plot!(10 .^ df_coadd.loglam, planck(A_optimized, cm_wvln, T_optimized, C_optimized), label="Model Spectrum (T = $T_optimized K)", linestyle=:dash)
-end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2113,18 +2151,18 @@ version = "1.4.1+2"
 # ╟─a57ce818-ec1f-4840-9fb5-c2a67aadd412
 # ╠═0c941b57-c185-4242-912f-c4afc03d4061
 # ╠═740e97fd-ec22-4999-a925-0433eba2a4f6
-# ╠═d2aa3adc-a717-41e4-aca9-503f6d4949c5
+# ╠═7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
 # ╠═ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
 # ╠═7318f7ea-74ad-4125-9738-c34fb4d7b27c
 # ╠═04d6d1ab-97ee-47ba-96ba-2c378e4e03cb
 # ╠═912d70d9-7ce1-4528-b7c3-cfe9b8a78455
 # ╠═64be4933-fdc6-4d7d-8483-0406eaa5c975
-# ╠═3b347662-5e0e-414c-9820-0ecd615b8c05
+# ╠═8e039816-a06a-4f79-bf77-d1ea7f60d3f2
 # ╠═f361457a-729a-408d-abf3-f7789a939367
 # ╠═ca976ab7-508b-4009-9101-13386c2c4174
-# ╠═bc44d81f-6312-4edc-9181-678e435c6441
 # ╟─8ccfd9c9-9fef-433e-b593-4a8117e32976
 # ╠═8e953fa4-ffaf-4603-8f00-ec9616e60677
+# ╠═410c52ab-9945-4006-9795-fba5b6d1f78e
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╠═ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
 # ╟─d44802f5-c8d1-4678-b34e-92e48b67a90b
