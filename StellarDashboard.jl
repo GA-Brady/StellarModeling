@@ -105,23 +105,28 @@ md"Selected target: $selected_target"
 	md"When you are ready to download the spectrum, click the check box: $(@bind download_target_HDUList CheckBox()) \
 	Click this checkbox to enable verbose output $(@bind HDU_verbose CheckBox(default=true))"
 
-# ╔═╡ ca976ab7-508b-4009-9101-13386c2c4174
-# Moving average to smooth noisy data
-function smooth_data(intensity, window_size=2)
-    smoothed = similar(intensity)
-    half_window = div(window_size, 2)
-    
-    for i in 1:length(intensity)
-        start_idx = max(1, i - half_window)
-        end_idx = min(length(intensity), i + half_window)
-        smoothed[i] = mean(intensity[start_idx:end_idx])
-    end
-    
-    return smoothed
+# ╔═╡ d72a8e53-07cb-456f-866f-d380ea8e81ab
+begin
+md""" ### Data Filters
+##### Ivar Handeling
+Check the box to remove values with low ivar: $(@bind remove_ivar CheckBox()) \
+Enter a decmial value for the ivar threshold: $(@bind ivar_ confirm(TextField(default="1"))) 
+
+##### Spectrum Edges
+Check box to remove edges: $(@bind remove_edges CheckBox(default=true)) \
+Check box to remove negative flux: $(@bind remove_negative_flux CheckBox(default=true))
+
+##### Bit Masks
+Check box to use AND mask: $(@bind use_and_mask CheckBox(default=true)) \
+Check box to use OR  mask: $(@bind use_or_mask CheckBox(default=true))
+"""
 end
 
-# ╔═╡ 8ccfd9c9-9fef-433e-b593-4a8117e32976
-md"### trying a different approach"
+# ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
+md""" ### ------ All the Extra Junk ------ """
+
+# ╔═╡ ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
+md"#### Variable Defs to Keep it Clean"
 
 # ╔═╡ c6a532b4-4430-41d0-91ac-07f52637342e
 # Global Constants
@@ -129,7 +134,7 @@ begin
 	global h = 6.62 * 10^(-27) # erg * s
 	global c = 2.99 * 10^(10)  # cm / s
 	global k = 1.38 * 10^(-16) # erg / K
-end
+end;
 
 # ╔═╡ ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
 begin
@@ -140,11 +145,8 @@ begin
 	end
 end
 
-# ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
-md""" ### ------ All the Extra Junk ------ """
-
-# ╔═╡ ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
-md"#### Variable Defs to Keep it Clean"
+# ╔═╡ 48027e84-2ba4-4206-b775-e71d0cc4b790
+ivar_threshold = try parse(Float64, ivar_) catch e 1 end;
 
 # ╔═╡ d44802f5-c8d1-4678-b34e-92e48b67a90b
 md"#### Coordinates"
@@ -324,10 +326,13 @@ begin
 		end
 		=#
 	end
-end
+end;
 
 # ╔═╡ a57ce818-ec1f-4840-9fb5-c2a67aadd412
-	md"Select the HDUList from the download: $(@bind HDUMatrix_index NumberField(1:num_visits)). Available HDULists for target: $num_visits"
+	md"""Select the HDUList from the download: $(@bind HDUMatrix_index NumberField(1:num_visits)). Available HDULists for target: $num_visits \ 
+	
+	Check the box to show the file header $(@bind show_header CheckBox(default=true) )
+	"""
 
 # ╔═╡ aef87fa2-9a65-48e0-891d-1591c845b3a4
 begin
@@ -359,21 +364,12 @@ begin
 end;
 
 # ╔═╡ 0c941b57-c185-4242-912f-c4afc03d4061
-fits_headers[1]
+if show_header fits_headers[1] end
 
 # ╔═╡ 7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
 begin
 	# Applying filters to the data-frame, user choice on how to clean?
-	ivar_threshold = 1
-	remove_ivar  = false
-
-	remove_edges = true
 	boundary     = [3.6, 3.950] # sets the lower and upper limits for a wavelength to be included
-
-	remove_negative_flux = true # necessary for linear model
-	
-	use_and_mask = true # removes flagged pixels
-	use_or_mask  = true 
 	
 	df_filtered = df_coadd |> 
 		df_coadd -> if remove_edges
@@ -401,71 +397,6 @@ end;
 
 # ╔═╡ aeff15f4-d974-42f1-b2a8-9aabbe10448f
 describe(df_filtered)
-
-# ╔═╡ 29485c7e-0b1b-4f36-bd5b-0391098389eb
-begin
-	df_train = df_filtered[1:2:nrow(df_filtered), :]
-	df_test  = df_filtered[2:2:nrow(df_filtered), :]
-end
-
-# ╔═╡ ad57ca38-e8cd-4531-a02d-e5a0079221b4
-begin
-	scatter(df_train.loglam, df_train.flux, color = "red", markersize =2)
-	scatter!(df_test.loglam, df_test.flux, color ="blue", markersize =2)
-end
-
-# ╔═╡ dc67d6f3-794b-44bd-8db9-c8a7067d8355
-begin
-	function log_planck(A, λ::AbstractVector, T::Float64)
-		cm_λ = (10 .^ λ) .* 10^(-8)
-		ln_Bλ   = log(A) .- (5 .* log.(cm_λ)) .- ((h*c)./(k .* cm_λ .* T))
-		return ln_Bλ
-	end
-
-	function log_f(x::AbstractVector)
-		log_model = log_planck(x[1], df_train.loglam, x[2])
-		model     = ℯ .^ log_model
-
-		χ_squared = df_train.ivar .* (df_train.flux - model) .^ 2
-		return sum(χ_squared)
-	end
-end
-
-# ╔═╡ 6532f90e-22fb-44e3-9946-1936f801361f
-begin
-	log_results = optimize(log_f, [1., 15000, 100])
-	A_log, T_log, C_log = log_results.minimizer
-	log_results.minimum
-end
-
-# ╔═╡ 8e039816-a06a-4f79-bf77-d1ea7f60d3f2
-begin
-	log_model = ℯ .^ log_planck(A_log, df_test.loglam, T_log)
-	
-	plot(df_test.loglam, df_test.flux,  
-	    # xscale=:log10,  # Log scale for x-axis 
-	    yscale=:log10,  # Log scale for y-axis
-	    xlabel="Log(λ) [Å]", 
-	    ylabel="Observed Flux",
-	    title="Linearized Spectrum under Wein's",
-	    label="Observed Data",
-	    markersize=3,
-	    linewidth=2,
-	    legend=:topleft)
-	plot!(df_test.loglam, log_model, 
-	    # xscale=:log10,  # Log scale for x-axis 
-	    yscale=:log10,  # Log scale for y-axis
-	    xlabel="Log(λ) [Å]", 
-	    ylabel="Observed Flux",
-	    title="Linearized Spectrum under Wein's",
-	    label="Log_Planck Model",
-	    markersize=3,
-		color="red",
-	    linewidth=2,
-		linestyle=:dash,
-	    legend=:topright)
-end
-
 
 # ╔═╡ a4dba851-8852-4385-bbbe-232caa67882a
 plot(df_filtered.loglam, df_filtered.ivar)
@@ -500,14 +431,99 @@ begin
 	# something goes horribly wrong with object # 40
 end
 
-# ╔═╡ 64be4933-fdc6-4d7d-8483-0406eaa5c975
+# ╔═╡ 29485c7e-0b1b-4f36-bd5b-0391098389eb
 begin
-	plot(10 .^ df_filtered.loglam, df_filtered.flux .* 10^(17), label="Observed Spectrum", xlabel="Wavelength (Å)", ylabel="Flux")
-	plot!(10 .^ df_filtered.loglam, planck(A_optimized, cm_wvln, T_optimized, C_optimized), label="Model Spectrum (T = $T_optimized K)", linestyle=:dash)
+	# samples every other point for train / test data
+	df_train = df_filtered[1:2:nrow(df_filtered), :]
+	df_test  = df_filtered[2:2:nrow(df_filtered), :]
+end;
+
+# ╔═╡ ad57ca38-e8cd-4531-a02d-e5a0079221b4
+begin
+	scatter(df_train.loglam, df_train.flux, color = "red", markersize =2)
+	scatter!(df_test.loglam, df_test.flux, color ="blue", markersize =2)
 end
 
-# ╔═╡ f361457a-729a-408d-abf3-f7789a939367
-smoothed_flux = smooth_data(df_coadd.flux)
+# ╔═╡ dc67d6f3-794b-44bd-8db9-c8a7067d8355
+begin
+	function log_planck(A, λ::AbstractVector, T::Float64)
+		cm_λ = (10 .^ λ) .* 10^(-8)
+		ln_Bλ   = A .- (5 .* log.(cm_λ)) .- ((h*c)./(k .* cm_λ .* T))
+		return ln_Bλ
+	end
+
+	function log_f(x::AbstractVector)
+		log_model = log_planck(x[1], df_train.loglam, x[2])
+		model     = ℯ .^ log_model
+
+		χ_squared = df_train.ivar .* (df_train.flux - model) .^ 2
+		return sum(χ_squared) / (length(df_train.loglam) - 2) # reduced chi-squared
+	end
+end
+
+# ╔═╡ 6532f90e-22fb-44e3-9946-1936f801361f
+begin
+	log_results = optimize(log_f, [1., 15000, 100])
+	A_log, T_log, C_log = log_results.minimizer
+	log_results.minimum
+end
+
+# ╔═╡ 8e039816-a06a-4f79-bf77-d1ea7f60d3f2
+begin
+	log_model = ℯ .^ log_planck(A_log, df_test.loglam, T_log)
+	
+	scatter(df_test.loglam, df_test.flux,  
+	    # xscale=:log10,  # Log scale for x-axis 
+	    yscale=:log10,  # Log scale for y-axis
+	    xlabel="Log(λ) [Å]", 
+	    ylabel="Log(B) [10^-17 erg/cm²/s/Å]",
+	    title="Linearized Spectrum under Wein's",
+	    label="Observed Test Data",
+	    markersize=3,
+	    linewidth=1,
+	    legend=:topleft)
+	plot!(df_test.loglam, log_model, 
+	    # xscale=:log10,  # Log scale for x-axis 
+	    yscale=:log10,  # Log scale for y-axis
+	    label="Log_Planck Model: T= $(Int(trunc(T_log))) K",
+	    markersize=3,
+		color="red",
+	    linewidth=2,
+		linestyle=:dash,
+	    legend=:topright)
+end
+
+
+# ╔═╡ 5b9762fe-a94e-40bb-8d73-be7369427336
+begin
+	test_chi_squared = sum(df_test.ivar .* (df_test.flux .- log_model).^2 )/ (length(df_test.flux) - 2)
+end
+
+# ╔═╡ ded89e4a-240e-4665-aa9e-8a86d555f6e3
+begin
+	df_log_residuals      = DataFrame(loglam = df_test.loglam, residual= df_test.flux .- log_model, ivar = df_test.ivar)
+	log_residuals_plot = df_log_residuals[1:5:nrow(df_log_residuals), :] # down-sampling to make plot easier to read
+end
+
+# ╔═╡ e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
+begin 
+	scatter(log_residuals_plot.loglam, 
+	log_residuals_plot.residual, 
+	yerror = (log_residuals_plot.ivar).^(-1/2),
+	xlabel="Log(λ) [Å]", 
+	ylabel="Log(B) [10^-17 erg/cm²/s/Å]",
+	title="Downsampled Residuals",
+	label="Observed - Wein's Model",
+	markersize=3,
+	linewidth=1,
+	legend=:topright)
+end
+
+# ╔═╡ 64be4933-fdc6-4d7d-8483-0406eaa5c975
+begin
+	plot(10 .^ df_train.loglam, df_train.flux .* 10^(17), label="Observed Spectrum", xlabel="Wavelength (Å)", ylabel="Flux")
+	plot!(10 .^ df_filtered.loglam, planck(A_optimized, cm_wvln, T_optimized, C_optimized), label="Model Spectrum (T = $T_optimized K)", linestyle=:dash)
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2172,31 +2188,33 @@ version = "1.4.1+2"
 # ╟─b80a5889-6309-4218-9857-921b7488a8af
 # ╟─ac5d4861-8af7-47f4-8bab-cd05daaabce5
 # ╟─a57ce818-ec1f-4840-9fb5-c2a67aadd412
-# ╠═0c941b57-c185-4242-912f-c4afc03d4061
-# ╠═740e97fd-ec22-4999-a925-0433eba2a4f6
-# ╠═7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
+# ╟─0c941b57-c185-4242-912f-c4afc03d4061
+# ╟─d72a8e53-07cb-456f-866f-d380ea8e81ab
 # ╟─aeff15f4-d974-42f1-b2a8-9aabbe10448f
-# ╠═29485c7e-0b1b-4f36-bd5b-0391098389eb
 # ╠═ad57ca38-e8cd-4531-a02d-e5a0079221b4
 # ╠═a4dba851-8852-4385-bbbe-232caa67882a
 # ╠═ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
 # ╠═7318f7ea-74ad-4125-9738-c34fb4d7b27c
 # ╠═dc67d6f3-794b-44bd-8db9-c8a7067d8355
 # ╠═6532f90e-22fb-44e3-9946-1936f801361f
+# ╠═5b9762fe-a94e-40bb-8d73-be7369427336
+# ╠═ded89e4a-240e-4665-aa9e-8a86d555f6e3
+# ╠═e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
 # ╠═8e039816-a06a-4f79-bf77-d1ea7f60d3f2
 # ╠═04d6d1ab-97ee-47ba-96ba-2c378e4e03cb
 # ╠═912d70d9-7ce1-4528-b7c3-cfe9b8a78455
 # ╠═64be4933-fdc6-4d7d-8483-0406eaa5c975
-# ╠═f361457a-729a-408d-abf3-f7789a939367
-# ╠═ca976ab7-508b-4009-9101-13386c2c4174
-# ╟─8ccfd9c9-9fef-433e-b593-4a8117e32976
-# ╠═c6a532b4-4430-41d0-91ac-07f52637342e
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
-# ╠═ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
+# ╟─ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
+# ╠═c6a532b4-4430-41d0-91ac-07f52637342e
+# ╠═48027e84-2ba4-4206-b775-e71d0cc4b790
+# ╠═7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
+# ╠═29485c7e-0b1b-4f36-bd5b-0391098389eb
 # ╟─d44802f5-c8d1-4678-b34e-92e48b67a90b
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
 # ╠═1ad89925-9707-497f-b682-9f509910d361
 # ╟─d40536f8-eca0-4780-9315-347238ce27a4
+# ╠═740e97fd-ec22-4999-a925-0433eba2a4f6
 # ╟─2f31b61c-9d20-406e-8306-97b76ede26d5
 # ╟─4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
 # ╟─8394e0d5-fb2b-4402-a6e5-ab00bbd41dfc
