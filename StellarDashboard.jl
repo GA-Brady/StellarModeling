@@ -45,6 +45,7 @@ begin
 	using OrderedCollections
 	using Statistics
 	using Missings
+	using QuadGK
 	# using Interact
 	using FITSIO
 	using Polynomials
@@ -329,7 +330,7 @@ begin
 end;
 
 # ╔═╡ a57ce818-ec1f-4840-9fb5-c2a67aadd412
-	md"""Select the HDUList from the download: $(@bind HDUMatrix_index NumberField(1:num_visits)). Available HDULists for target: $num_visits \ 
+	md"""Select the HDUList from the download: $(@bind HDUMatrix_index NumberField(1:num_visits)). Available HDULists for target: $num_visits  
 	
 	Check the box to show the file header $(@bind show_header CheckBox(default=true) )
 	"""
@@ -398,9 +399,6 @@ end;
 # ╔═╡ aeff15f4-d974-42f1-b2a8-9aabbe10448f
 describe(df_filtered)
 
-# ╔═╡ a4dba851-8852-4385-bbbe-232caa67882a
-plot(df_filtered.loglam, df_filtered.ivar)
-
 # ╔═╡ 7318f7ea-74ad-4125-9738-c34fb4d7b27c
 begin
 	function f(x::AbstractVector)
@@ -408,27 +406,6 @@ begin
 		χ_squared = df_filtered.ivar .* (df_filtered.flux .* 10^(17) .- model) .^2
 		return sum(χ_squared)
 	end
-end
-
-# ╔═╡ 04d6d1ab-97ee-47ba-96ba-2c378e4e03cb
-begin
-	optimizer_result = optimize(f, [1., 22000, 0])
-	optimized_params = optimizer_result.minimizer
-	A_optimized = optimized_params[1]
-	T_optimized = optimized_params[2]
-	C_optimized = optimized_params[3];
-
-	#=
-	future optimizer plans:
-		1) weight values based on their variance
-		2) try fitting log-log instead
-	=#
-end
-
-# ╔═╡ 912d70d9-7ce1-4528-b7c3-cfe9b8a78455
-begin
-	optimizer_result.minimum #how to further minimize chi_squared?
-	# something goes horribly wrong with object # 40
 end
 
 # ╔═╡ 29485c7e-0b1b-4f36-bd5b-0391098389eb
@@ -440,8 +417,19 @@ end;
 
 # ╔═╡ ad57ca38-e8cd-4531-a02d-e5a0079221b4
 begin
-	scatter(df_train.loglam, df_train.flux, color = "red", markersize =2)
-	scatter!(df_test.loglam, df_test.flux, color ="blue", markersize =2)
+	p1 = scatter(df_train.loglam, df_train.flux, 
+			color = "red", 
+			label = "Training Sample",
+			ylabel="Log(B)",
+			title = "Filtered Data",
+			markersize =2)
+	p1 = scatter!(df_test.loglam, df_test.flux, color ="blue", label = "Test Sample", markersize =2)
+	p2 = plot(df_filtered.loglam, df_filtered.ivar,
+			label = "ivar",
+			xlabel = "Log(λ) [Å]",
+			ylabel = "ivar")
+	plot(p1, p2, layout = (2,1))
+	
 end
 
 # ╔═╡ dc67d6f3-794b-44bd-8db9-c8a7067d8355
@@ -503,7 +491,7 @@ end
 begin
 	df_log_residuals      = DataFrame(loglam = df_test.loglam, residual= df_test.flux .- log_model, ivar = df_test.ivar)
 	log_residuals_plot = df_log_residuals[1:5:nrow(df_log_residuals), :] # down-sampling to make plot easier to read
-end
+end;
 
 # ╔═╡ e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
 begin 
@@ -517,12 +505,6 @@ begin
 	markersize=3,
 	linewidth=1,
 	legend=:topright)
-end
-
-# ╔═╡ 64be4933-fdc6-4d7d-8483-0406eaa5c975
-begin
-	plot(10 .^ df_train.loglam, df_train.flux .* 10^(17), label="Observed Spectrum", xlabel="Wavelength (Å)", ylabel="Flux")
-	plot!(10 .^ df_filtered.loglam, planck(A_optimized, cm_wvln, T_optimized, C_optimized), label="Model Spectrum (T = $T_optimized K)", linestyle=:dash)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -541,6 +523,7 @@ Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Polynomials = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
 
@@ -558,6 +541,7 @@ Plots = "~1.40.9"
 PlutoUI = "~0.7.23"
 Polynomials = "~4.0.19"
 PyCall = "~1.96.4"
+QuadGK = "~2.11.2"
 Statistics = "~1.11.1"
 Tables = "~1.12.0"
 """
@@ -568,7 +552,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "6d93614f564267c7c0cee813762a2d36dcc925dc"
+project_hash = "04fb86fa308426bfe5fcf929ac17a847d6ab06f1"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -2191,19 +2175,15 @@ version = "1.4.1+2"
 # ╟─0c941b57-c185-4242-912f-c4afc03d4061
 # ╟─d72a8e53-07cb-456f-866f-d380ea8e81ab
 # ╟─aeff15f4-d974-42f1-b2a8-9aabbe10448f
-# ╠═ad57ca38-e8cd-4531-a02d-e5a0079221b4
-# ╠═a4dba851-8852-4385-bbbe-232caa67882a
+# ╟─ad57ca38-e8cd-4531-a02d-e5a0079221b4
 # ╠═ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
 # ╠═7318f7ea-74ad-4125-9738-c34fb4d7b27c
 # ╠═dc67d6f3-794b-44bd-8db9-c8a7067d8355
 # ╠═6532f90e-22fb-44e3-9946-1936f801361f
 # ╠═5b9762fe-a94e-40bb-8d73-be7369427336
 # ╠═ded89e4a-240e-4665-aa9e-8a86d555f6e3
-# ╠═e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
-# ╠═8e039816-a06a-4f79-bf77-d1ea7f60d3f2
-# ╠═04d6d1ab-97ee-47ba-96ba-2c378e4e03cb
-# ╠═912d70d9-7ce1-4528-b7c3-cfe9b8a78455
-# ╠═64be4933-fdc6-4d7d-8483-0406eaa5c975
+# ╟─e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
+# ╟─8e039816-a06a-4f79-bf77-d1ea7f60d3f2
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╟─ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
 # ╠═c6a532b4-4430-41d0-91ac-07f52637342e
