@@ -75,12 +75,16 @@ end
 # ╔═╡ 3a9c8be6-e990-11ef-044c-57e8b712c0fb
 md"
 # Stellar Temperature Dashboard
+TO ADD More Introduction Stuff
 The goal of this dashboard is to ingest SDSS MaSTAR data from DR17 then estimate the temperature of stars. \
 
 
 Garrett Brady - gab5654@psu.edu \
 Start: Feb 12th, 2025 
 "
+
+# ╔═╡ c8534b38-00a8-468c-a3c0-eb78bb58ccc2
+md""" TO ADD: section talking about SDSS MaSTAR catalog"""
 
 # ╔═╡ 2451cb46-729a-45c4-b0c0-d2d3e8b9e297
 begin
@@ -126,14 +130,64 @@ end
 # ╔═╡ 4b89b91b-ec7d-4e08-9e37-90c40e0bbb94
 md" ##### Summary statistics of filtered dataframe: "
 
-# ╔═╡ 3238d955-c92a-4981-8493-ffc1b66c4840
-md" ## Linearized Wein's Displacement "
+# ╔═╡ fbbf6edd-77d7-4972-9735-050c14767775
+md""" ##### visualizing filtered data"""
 
-# ╔═╡ 0991dbc4-69c8-4e5e-9ae9-efe58384ecc1
-md" TO ADD section about the theory behind Wein's Displacement"
+# ╔═╡ 3238d955-c92a-4981-8493-ffc1b66c4840
+md" # Linearized Wein's Displacement "
+
+# ╔═╡ fb1a5aee-507e-4f35-b034-ecf3826a2209
+md""" ## Model Structure """
+
+# ╔═╡ ac9b44d4-3c48-4c11-97cc-a3d55456b0a1
+md"It was found that using Optim.jl, it was difficult to reduce χ² to 'reasonable' values when attempting to directly fit Spectral Radiance B(λ, T).
+
+$B(λ, T) = \frac{2hc^2}{λ^5}\frac{1}{e^\frac{hc}{kλT}-1}$
+
+To give the optimizer an easier time, we can estimate this under Wein's Limit:
+
+$\ln(B(λ, T)) ≈ A -5\ln(λ) - \frac{hc}{kλT} = M(λ, T)$
+
+We then use a weighted χ² as the minimizing function
+
+$χ² = ∑\text{ivar}*(e^{M(λ, T)}-F_{\lambda})^2$
+"
+
+# ╔═╡ cc8ee21b-4cf6-4236-b905-d8ce4ef0caba
+md"""TO ADD: ability to zoom on spectral features between residuals and main plot, discussion about model limitations """
+
+# ╔═╡ 0063c9f0-19ab-44f3-ae1c-1c30784b8741
+md"""## Model Limitations 
+* Wein's Displacement Law does not apply well as many stars have 
+$\frac{hc}{kλT} ≈ 1: λ \in [10^{3.6}, 10^4] Å\text{, }T \in [2300, 7000] K$
+* Does not remove potential spectral features
+* Probably a third reason"""
+
+# ╔═╡ 775e5751-a608-4632-be62-cc877deb056b
+md"""# Radiance Integral"""
+
+# ╔═╡ 93b38348-eb5a-4968-9564-ab4742ca4b60
+# ╠═╡ disabled = true
+#=╠═╡
+begin
+plot(; legend=false, size=(1000, 400), xlim=(3000, 10000), ylim=(0, 0.03),
+     xlabel="Wavelength (Å)", title="Spectral Lines (3000–10000 Å)", yticks=false,
+     gridalpha=0.3)
+
+# Plot vertical lines with alternating y label offset
+y_offset_toggle = true
+for (element, lines) in spectral_lines
+    for (label, wavelength) in lines
+        plot!([wavelength, wavelength], [0, 0.02], l=:dash, lc=:black, alpha=0.7)
+        annotate!(wavelength, y_offset_toggle ? 0.022 : 0.018, text(label, 8, :black, :vertical))
+        y_offset_toggle = !y_offset_toggle
+    end
+end
+end
+  ╠═╡ =#
 
 # ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
-md""" ## All the Extra Junk"""
+md""" # All the Extra Junk"""
 
 # ╔═╡ de71a944-9d7b-4378-851c-0578cfae4c31
 md" ### Optimizing Functions"
@@ -141,13 +195,76 @@ md" ### Optimizing Functions"
 # ╔═╡ ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
 md"### Variable Defs to Keep it Clean"
 
+# ╔═╡ a8cf807f-79ee-4c9d-95dd-930b243e491c
+begin
+	spectral_lines = Dict(
+	    "Hydrogen (Balmer)" => Dict(
+	        "Hα" => 6563,
+	        "Hβ" => 4861,
+	        "Hγ" => 4340,
+	        "Hδ" => 4102,
+	        "Hε" => 3970,
+	        "Hζ" => 3889
+	    ),
+	    "Helium I" => Dict(
+	        "He I 4471" => 4471,
+	        "He I 4026" => 4026,
+	        "He I 4388" => 4388,
+	        "He I 4713" => 4713,
+	        "He I 4922" => 4922,
+	        "He I 5876" => 5876
+	    ),
+	    "Helium II" => Dict(
+	        "He II 4686" => 4686,
+	        "He II 4541" => 4541,
+	        "He II 5411" => 5411
+	    ),
+	    "Calcium" => Dict(
+	        "Ca II K" => 3933,
+	        "Ca II H" => 3968,
+	        "Ca II 8498" => 8498,
+	        "Ca II 8542" => 8542,
+	        "Ca II 8662" => 8662,
+	        "Ca I 4226" => 4226
+	    ),
+	    "Sodium" => Dict(
+	        "Na I D1" => 5896,
+	        "Na I D2" => 5890
+	    ),
+	    "Magnesium" => Dict(
+	        "Mg I 5167" => 5167,
+	        "Mg I 5172" => 5172,
+	        "Mg I 5183" => 5183,
+	        "Mg II 4481" => 4481
+	    ),
+	    "Iron" => Dict(
+	        "Fe I 4045" => 4045,
+	        "Fe I 4383" => 4383,
+	        "Fe I 5270" => 5270,
+	        "Fe I 5328" => 5328,
+	        "Fe I 6495" => 6495,
+	        "Fe II 4924" => 4924,
+	        "Fe II 5018" => 5018,
+	        "Fe II 5169" => 5169
+	    ),
+	    "Titanium" => Dict(
+	        "Ti II 3759" => 3759,
+	        "Ti II 3761" => 3761,
+	        "Ti II 3913" => 3913,
+	        "Ti II 3933" => 3933
+	    )
+	)
+
+end
+
 # ╔═╡ c6a532b4-4430-41d0-91ac-07f52637342e
 # Global Constants
 begin
 	global h = 6.62 * 10^(-27) # erg * s
 	global c = 2.99 * 10^(10)  # cm / s
 	global k = 1.38 * 10^(-16) # erg / K
-end;
+	md""" global constants"""
+end
 
 # ╔═╡ ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
 begin
@@ -159,7 +276,10 @@ begin
 end
 
 # ╔═╡ 48027e84-2ba4-4206-b775-e71d0cc4b790
-ivar_threshold = try parse(Float64, ivar_) catch e 1 end;
+begin
+	ivar_threshold = try parse(Float64, ivar_) catch e 1 end
+	md"""ivar_threshold"""
+end
 
 # ╔═╡ d44802f5-c8d1-4678-b34e-92e48b67a90b
 md"### Coordinates"
@@ -409,7 +529,8 @@ begin
 		else df_coadd end
 
 	cm_wvln  = 10 .^ (df_filtered.loglam) * 10^(-8);
-end;
+	md"""filters pipeline"""
+end
 
 # ╔═╡ aeff15f4-d974-42f1-b2a8-9aabbe10448f
 describe(df_filtered)
@@ -419,7 +540,8 @@ begin
 	# samples every other point for train / test data
 	df_train = df_filtered[1:2:nrow(df_filtered), :]
 	df_test  = df_filtered[2:2:nrow(df_filtered), :]
-end;
+	md"""splitting df into train and test"""
+end
 
 # ╔═╡ ad57ca38-e8cd-4531-a02d-e5a0079221b4
 begin	
@@ -506,11 +628,25 @@ begin
 end
 
 
+# ╔═╡ 5b9762fe-a94e-40bb-8d73-be7369427336
+begin
+	log_χ²_test = sum(df_test.ivar .* (df_test.flux .- log_model).^2 )/ (length(df_test.flux) - 2)
+	md"""calculating test chi squared"""
+end
+
+# ╔═╡ c559c08f-48ff-44c2-8ea7-801c76c71027
+md"""Effective Temperature: $(Int(trunc(T_log))) \
+training set χ²:     $(round(log_χ²_train, digits=3)) \
+test set χ²: $(round(log_χ²_test, digits=3))
+
+"""
+
 # ╔═╡ ded89e4a-240e-4665-aa9e-8a86d555f6e3
 begin
 	df_log_residuals      = DataFrame(loglam = df_test.loglam, residual= df_test.flux .- log_model, ivar = df_test.ivar)
 	log_residuals_plot = df_log_residuals[1:5:nrow(df_log_residuals), :] # down-sampling to make plot easier to read
-end;
+	md"""downsampling residual plot """
+end
 
 # ╔═╡ e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
 begin 
@@ -525,18 +661,6 @@ begin
 	linewidth=1,
 	legend=:topright)
 end
-
-# ╔═╡ 5b9762fe-a94e-40bb-8d73-be7369427336
-begin
-	log_χ²_test = sum(df_test.ivar .* (df_test.flux .- log_model).^2 )/ (length(df_test.flux) - 2)
-end;
-
-# ╔═╡ c559c08f-48ff-44c2-8ea7-801c76c71027
-md"""Effective Temperature: $(Int(trunc(T_log))) \
-training set χ²:     $(round(log_χ²_train, digits=3)) \
-test set χ²: $(round(log_χ²_test, digits=3))
-
-"""
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -566,10 +690,10 @@ FITSIO = "~0.17.4"
 FilePaths = "~0.8.3"
 LsqFit = "~0.15.0"
 Missings = "~1.2.0"
-Optim = "~1.10.0"
+Optim = "~1.12.0"
 OrderedCollections = "~1.8.0"
-Plots = "~1.40.9"
-PlutoUI = "~0.7.23"
+Plots = "~1.40.11"
+PlutoUI = "~0.7.61"
 Polynomials = "~4.0.19"
 PyCall = "~1.96.4"
 QuadGK = "~2.11.2"
@@ -583,7 +707,22 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "04fb86fa308426bfe5fcf929ac17a847d6ab06f1"
+project_hash = "82435bac7814eba154c3ca1dfd977dc0613dfd88"
+
+[[deps.ADTypes]]
+git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
+uuid = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
+version = "1.14.0"
+
+    [deps.ADTypes.extensions]
+    ADTypesChainRulesCoreExt = "ChainRulesCore"
+    ADTypesConstructionBaseExt = "ConstructionBase"
+    ADTypesEnzymeCoreExt = "EnzymeCore"
+
+    [deps.ADTypes.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    ConstructionBase = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
+    EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -726,9 +865,9 @@ weakdeps = ["SpecialFunctions"]
 
 [[deps.Colors]]
 deps = ["ColorTypes", "FixedPointNumbers", "Reexport"]
-git-tree-sha1 = "362a287c3aa50601b0bc359053d5c2468f0e7ce0"
+git-tree-sha1 = "64e15186f0aa277e174aa81798f7eb8598e0157e"
 uuid = "5ae59095-9a9b-59fe-a467-6f913c188581"
-version = "0.12.11"
+version = "0.13.0"
 
 [[deps.CommonSubexpressions]]
 deps = ["MacroTools"]
@@ -839,6 +978,54 @@ git-tree-sha1 = "23163d55f885173722d1e4cf0f6110cdbaf7e272"
 uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
 version = "1.15.1"
 
+[[deps.DifferentiationInterface]]
+deps = ["ADTypes", "LinearAlgebra"]
+git-tree-sha1 = "e31cedb046c74ddb1872b32c57e3a11e4ecc432a"
+uuid = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
+version = "0.6.49"
+
+    [deps.DifferentiationInterface.extensions]
+    DifferentiationInterfaceChainRulesCoreExt = "ChainRulesCore"
+    DifferentiationInterfaceDiffractorExt = "Diffractor"
+    DifferentiationInterfaceEnzymeExt = ["EnzymeCore", "Enzyme"]
+    DifferentiationInterfaceFastDifferentiationExt = "FastDifferentiation"
+    DifferentiationInterfaceFiniteDiffExt = "FiniteDiff"
+    DifferentiationInterfaceFiniteDifferencesExt = "FiniteDifferences"
+    DifferentiationInterfaceForwardDiffExt = ["ForwardDiff", "DiffResults"]
+    DifferentiationInterfaceGTPSAExt = "GTPSA"
+    DifferentiationInterfaceMooncakeExt = "Mooncake"
+    DifferentiationInterfacePolyesterForwardDiffExt = ["PolyesterForwardDiff", "ForwardDiff", "DiffResults"]
+    DifferentiationInterfaceReverseDiffExt = ["ReverseDiff", "DiffResults"]
+    DifferentiationInterfaceSparseArraysExt = "SparseArrays"
+    DifferentiationInterfaceSparseConnectivityTracerExt = "SparseConnectivityTracer"
+    DifferentiationInterfaceSparseMatrixColoringsExt = "SparseMatrixColorings"
+    DifferentiationInterfaceStaticArraysExt = "StaticArrays"
+    DifferentiationInterfaceSymbolicsExt = "Symbolics"
+    DifferentiationInterfaceTrackerExt = "Tracker"
+    DifferentiationInterfaceZygoteExt = ["Zygote", "ForwardDiff"]
+
+    [deps.DifferentiationInterface.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    DiffResults = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
+    Diffractor = "9f5e2b26-1114-432f-b630-d3fe2085c51c"
+    Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+    EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
+    FastDifferentiation = "eb9bf01b-bf85-4b60-bf87-ee5de06c00be"
+    FiniteDiff = "6a86dc24-6348-571c-b903-95158fe2bd41"
+    FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
+    ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+    GTPSA = "b27dd330-f138-47c5-815b-40db9dd9b6e8"
+    Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
+    PolyesterForwardDiff = "98d1487c-24ca-40b6-b7ab-df2af84e126b"
+    ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    SparseConnectivityTracer = "9f842d2f-2579-4b1d-911e-f412cf18a3f5"
+    SparseMatrixColorings = "0a514795-09f3-496d-8182-132a7b665d35"
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+    Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
+    Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
+    Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
+
 [[deps.Distributed]]
 deps = ["Random", "Serialization", "Sockets"]
 uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
@@ -870,6 +1057,11 @@ version = "0.9.3"
 deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 version = "1.6.0"
+
+[[deps.EnumX]]
+git-tree-sha1 = "bddad79635af6aec424f53ed8aad5d7555dc6f00"
+uuid = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
+version = "1.0.5"
 
 [[deps.EpollShim_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1065,9 +1257,9 @@ version = "0.3.28"
 
 [[deps.Hyperscript]]
 deps = ["Test"]
-git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+git-tree-sha1 = "179267cfa5e712760cd43dcae385d7ea90cc25a4"
 uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
-version = "0.0.4"
+version = "0.0.5"
 
 [[deps.HypertextLiteral]]
 deps = ["Tricks"]
@@ -1303,6 +1495,11 @@ git-tree-sha1 = "40acc20cfb253cf061c1a2a2ea28de85235eeee1"
 uuid = "2fda8390-95c7-5789-9bda-21331edee243"
 version = "0.15.0"
 
+[[deps.MIMEs]]
+git-tree-sha1 = "1833212fd6f580c20d4291da9c1b4e8a655b128e"
+uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
+version = "1.0.0"
+
 [[deps.MacroTools]]
 git-tree-sha1 = "72aebe0b5051e5143a079a4685a46da330a40472"
 uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
@@ -1344,10 +1541,10 @@ uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 version = "2023.12.12"
 
 [[deps.NLSolversBase]]
-deps = ["DiffResults", "Distributed", "FiniteDiff", "ForwardDiff"]
-git-tree-sha1 = "a0b464d183da839699f4c79e7606d9d186ec172c"
+deps = ["ADTypes", "DifferentiationInterface", "Distributed", "FiniteDiff", "ForwardDiff"]
+git-tree-sha1 = "1f78293864c5e48ecf97269b0e23d7be28eb1958"
 uuid = "d41bc354-129a-5804-8e4c-c37616107c6c"
-version = "7.8.3"
+version = "7.9.0"
 
 [[deps.NaNMath]]
 deps = ["OpenLibm_jll"]
@@ -1394,10 +1591,10 @@ uuid = "efe28fd5-8261-553b-a9e1-b2916fc3738e"
 version = "0.5.6+0"
 
 [[deps.Optim]]
-deps = ["Compat", "FillArrays", "ForwardDiff", "LineSearches", "LinearAlgebra", "NLSolversBase", "NaNMath", "Parameters", "PositiveFactorizations", "Printf", "SparseArrays", "StatsBase"]
-git-tree-sha1 = "ab7edad78cdef22099f43c54ef77ac63c2c9cc64"
+deps = ["Compat", "EnumX", "FillArrays", "ForwardDiff", "LineSearches", "LinearAlgebra", "NLSolversBase", "NaNMath", "PositiveFactorizations", "Printf", "SparseArrays", "StatsBase"]
+git-tree-sha1 = "31b3b1b8e83ef9f1d50d74f1dd5f19a37a304a1f"
 uuid = "429524aa-4258-5aef-a3af-852621145aeb"
-version = "1.10.0"
+version = "1.12.0"
 
     [deps.Optim.extensions]
     OptimMOIExt = "MathOptInterface"
@@ -1479,9 +1676,9 @@ version = "1.4.3"
 
 [[deps.Plots]]
 deps = ["Base64", "Contour", "Dates", "Downloads", "FFMPEG", "FixedPointNumbers", "GR", "JLFzf", "JSON", "LaTeXStrings", "Latexify", "LinearAlgebra", "Measures", "NaNMath", "Pkg", "PlotThemes", "PlotUtils", "PrecompileTools", "Printf", "REPL", "Random", "RecipesBase", "RecipesPipeline", "Reexport", "RelocatableFolders", "Requires", "Scratch", "Showoff", "SparseArrays", "Statistics", "StatsBase", "TOML", "UUIDs", "UnicodeFun", "UnitfulLatexify", "Unzip"]
-git-tree-sha1 = "dae01f8c2e069a683d3a6e17bbae5070ab94786f"
+git-tree-sha1 = "24be21541580495368c35a6ccef1454e7b5015be"
 uuid = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
-version = "1.40.9"
+version = "1.40.11"
 
     [deps.Plots.extensions]
     FileIOExt = "FileIO"
@@ -1498,10 +1695,10 @@ version = "1.40.9"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [[deps.PlutoUI]]
-deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
-git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
+deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
+git-tree-sha1 = "7e71a55b87222942f0f9337be62e26b1f103d3e4"
 uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
-version = "0.7.23"
+version = "0.7.61"
 
 [[deps.Polynomials]]
 deps = ["LinearAlgebra", "OrderedCollections", "RecipesBase", "Requires", "Setfield", "SparseArrays"]
@@ -2196,6 +2393,7 @@ version = "1.4.1+2"
 
 # ╔═╡ Cell order:
 # ╟─3a9c8be6-e990-11ef-044c-57e8b712c0fb
+# ╟─c8534b38-00a8-468c-a3c0-eb78bb58ccc2
 # ╟─2451cb46-729a-45c4-b0c0-d2d3e8b9e297
 # ╟─898652bb-2250-4b87-90ae-d96f34cf6ce2
 # ╟─061e7bdb-aa45-4519-9df2-9889848f3bb4
@@ -2207,29 +2405,36 @@ version = "1.4.1+2"
 # ╟─d72a8e53-07cb-456f-866f-d380ea8e81ab
 # ╟─4b89b91b-ec7d-4e08-9e37-90c40e0bbb94
 # ╟─aeff15f4-d974-42f1-b2a8-9aabbe10448f
+# ╠═fbbf6edd-77d7-4972-9735-050c14767775
 # ╟─ad57ca38-e8cd-4531-a02d-e5a0079221b4
 # ╟─3238d955-c92a-4981-8493-ffc1b66c4840
-# ╟─0991dbc4-69c8-4e5e-9ae9-efe58384ecc1
+# ╟─fb1a5aee-507e-4f35-b034-ecf3826a2209
+# ╟─ac9b44d4-3c48-4c11-97cc-a3d55456b0a1
 # ╟─8e039816-a06a-4f79-bf77-d1ea7f60d3f2
 # ╟─c559c08f-48ff-44c2-8ea7-801c76c71027
-# ╠═ded89e4a-240e-4665-aa9e-8a86d555f6e3
+# ╟─cc8ee21b-4cf6-4236-b905-d8ce4ef0caba
 # ╟─e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
+# ╟─0063c9f0-19ab-44f3-ae1c-1c30784b8741
+# ╟─775e5751-a608-4632-be62-cc877deb056b
+# ╠═93b38348-eb5a-4968-9564-ab4742ca4b60
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╟─de71a944-9d7b-4378-851c-0578cfae4c31
-# ╠═ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
-# ╟─dc67d6f3-794b-44bd-8db9-c8a7067d8355
-# ╠═6532f90e-22fb-44e3-9946-1936f801361f
-# ╠═5b9762fe-a94e-40bb-8d73-be7369427336
+# ╟─ce9cf0a0-8a6d-40f1-91ce-f9b2467b3deb
+# ╠═dc67d6f3-794b-44bd-8db9-c8a7067d8355
+# ╟─6532f90e-22fb-44e3-9946-1936f801361f
+# ╟─5b9762fe-a94e-40bb-8d73-be7369427336
+# ╟─ded89e4a-240e-4665-aa9e-8a86d555f6e3
 # ╟─ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
-# ╠═c6a532b4-4430-41d0-91ac-07f52637342e
-# ╠═48027e84-2ba4-4206-b775-e71d0cc4b790
-# ╠═7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
-# ╠═29485c7e-0b1b-4f36-bd5b-0391098389eb
+# ╟─a8cf807f-79ee-4c9d-95dd-930b243e491c
+# ╟─c6a532b4-4430-41d0-91ac-07f52637342e
+# ╟─48027e84-2ba4-4206-b775-e71d0cc4b790
+# ╟─7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
+# ╟─29485c7e-0b1b-4f36-bd5b-0391098389eb
 # ╟─d44802f5-c8d1-4678-b34e-92e48b67a90b
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
 # ╠═1ad89925-9707-497f-b682-9f509910d361
 # ╟─d40536f8-eca0-4780-9315-347238ce27a4
-# ╠═740e97fd-ec22-4999-a925-0433eba2a4f6
+# ╟─740e97fd-ec22-4999-a925-0433eba2a4f6
 # ╟─2f31b61c-9d20-406e-8306-97b76ede26d5
 # ╟─4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
 # ╟─8394e0d5-fb2b-4402-a6e5-ab00bbd41dfc
