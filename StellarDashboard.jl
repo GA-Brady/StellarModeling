@@ -173,6 +173,9 @@ $\frac{hc}{kλT} ≈ 1: λ \in [10^{3.6}, 10^4] Å\text{, }T \in [2300, 7000] K
 # ╔═╡ 775e5751-a608-4632-be62-cc877deb056b
 md"""# Bayesian MCMC"""
 
+# ╔═╡ a51abe1b-3369-4660-8acf-c26dbe79bfc5
+md"""## Model Structure"""
+
 # ╔═╡ 9afe3e82-e6b9-40ea-9ccd-50357195e89b
 md"""Deterministic Model:
 
@@ -195,13 +198,25 @@ Finally, Baysian inference:
 $P(A,T ~|~ D) = \frac{P(D ~|~ A,T)*P(A,T)}{P(D)}$
 """
 
+# ╔═╡ addcdacb-51ed-4ff1-af38-7fdc762d394b
+md"""Click this box to run Bayesean MCMC: $(@bind run_MCMC CheckBox())"""
+
+# ╔═╡ d9d69224-43cc-4ff6-b61c-6df54ec4d8ad
+md"""
+## Model Limitations
+"""
+
+# ╔═╡ dbbe8b29-445d-4595-9bcb-714184123622
+md"""
+* Takes a while to run
+* Gets caught in Local Minima
+* Does not fit emission / absorption features
+"""
+
 # ╔═╡ 88193288-e2d0-4413-81c6-4b3239bc08c6
 function trapezoid_integrate(x, y)
     return sum(diff(x) .* ((y[1:end-1] .+ y[2:end]) ./ 2))
 end
-
-# ╔═╡ addcdacb-51ed-4ff1-af38-7fdc762d394b
-md"""Click this box to run Bayesean MCMC: $(@bind run_MCMC CheckBox())"""
 
 # ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 md""" # All the Extra Junk"""
@@ -593,21 +608,63 @@ begin
 	
 end
 
-# ╔═╡ b71ed739-d026-4fa5-8148-3ac19bcc3ff6
+# ╔═╡ dbd6c860-9e27-48cd-9944-c992d7ab33f4
 begin
-	scatter(10 .^ df_test.loglam, df_test.flux,  
-	    # xscale=:log10,  # Log scale for x-axis 
-	    xlabel="λ [Å]", 
-	    ylabel="B [10^-17 erg/cm²/s/Å]",
-	    title="Linearized Spectrum under Wein's",
-	    label="Test Spectrum",
-		color = "gray",
-		alpha = .5,
-	    markersize=2,
-	    linewidth=.1,
-		markerstrokecolor = :transparent,
-		markerstrokewidth = 0,
-	    legend=:topleft)
+	if run_MCMC
+		model1 = bayesian_planck(df_train)
+		chain = sample(model1, NUTS(), 1000)
+	end
+end;
+
+# ╔═╡ f037c8b2-e647-4bb9-ba8e-1f8b5000de7d
+density(chain, :T,  
+	    title = "Posterior Density for Temperature",
+        xlabel = "T (K)",
+        ylabel = "Density",
+        color = :crimson,
+        lw = 2,
+        size = (600, 300),
+        legend = false,
+        grid = false)
+
+# ╔═╡ 4749c595-3ef9-43f8-a0c2-d8c510cfb002
+traceplot(chain, :T,
+     title = "Trace for Temperature",
+     xlabel = "Sample",
+     ylabel = "T (K)",
+     color = :teal,
+     lw = 1.5,
+     size = (600, 300),
+     legend = false,
+     grid = false)
+
+# ╔═╡ 976520c3-4e2d-4784-80c4-f5cb757ae6dd
+begin
+	# Mean of the posterior samples for A and T
+	A_samples = chain[:A]
+	T_samples = chain[:T]
+	
+	mean_A = mean(A_samples)
+	mean_T = mean(T_samples)
+	
+	# Median of the posterior samples for A and T
+	median_A = median(A_samples)
+	median_T = median(T_samples)
+	
+	# 95% credible interval for A and T (2.5th and 97.5th percentiles)
+	ci_A = quantile(A_samples, [0.025, 0.975])
+	ci_T = quantile(T_samples, [0.025, 0.975])
+
+	σT   = (ci_T[2] - ci_T[1])/2
+	
+	println("Mean of A: ", mean_A)
+	println("Mean of T: ", mean_T)
+	
+	println("Median of A: ", median_A)
+	println("Median of T: ", median_T)
+	
+	println("95% credible interval for A: ", ci_A)
+	println("95% credible interval for T: ", ci_T)
 end
 
 # ╔═╡ 85923ffd-7446-4711-bc70-76e34da96a72
@@ -643,64 +700,78 @@ begin
 	md"""Some more complex loss functions. Potentially add one about integral loss?"""
 end
 
-# ╔═╡ dbd6c860-9e27-48cd-9944-c992d7ab33f4
+# ╔═╡ b71ed739-d026-4fa5-8148-3ac19bcc3ff6
 begin
-	if run_MCMC
-		model1 = bayesian_planck(df_train)
-		chain = sample(model1, NUTS(), 1000)
-	end
-end;
+	xmin = minimum(df_test.loglam)
+	xmax = maximum(df_test.loglam)
+	logλ_range = LinRange(xmin, xmax, 5000)
+	Åλ_range   = 10 .^ logλ_range
+	y1 = planck_cgs(mean_A, x_planck, ci_T[1])
+	y2 = planck_cgs(mean_A, x_planck, ci_T[2])
+	
+	scatter(df_test.loglam, df_test.flux,  
+	    # xscale=:log10,  # Log scale for x-axis 
+	    xlabel="Log(λ) [Å]", 
+	    ylabel="[10^-17 erg/cm²/s/Å]",
+	    title="MCMC Blackbody Spectrum",
+	    label="Observed Spectrum",
+		color = "gray",
+		alpha = .5,
+	    markersize=2,
+	    linewidth=.1,
+		markerstrokecolor = :transparent,
+		markerstrokewidth = 0,
+	    legend=:topright)
+	
+	plot!(logλ_range, y1,
+		label = "T Confidence Band", 
+		fillrange = y2,
+		fillalpha = .35)
 
-# ╔═╡ f037c8b2-e647-4bb9-ba8e-1f8b5000de7d
-density(chain, :T,  
-	    title = "Posterior Density for Temperature",
-        xlabel = "T (K)",
-        ylabel = "Density",
-        color = :crimson,
-        lw = 2,
-        size = (600, 300),
-        legend = false,
-        grid = false)
+	plot!(logλ_range, y1,
+		label = "T Lower Bound, T=$(Int(trunc(ci_T[1])))", 
+		color = :red)
+	
+	plot!(logλ_range, y2,
+		label = "T Upper Bound, T=$(Int(trunc(ci_T[2])))",
+		color = :teal )
+end
 
-# ╔═╡ 4749c595-3ef9-43f8-a0c2-d8c510cfb002
-traceplot(chain, :T,
-     title = "Trace for Temperature",
-     xlabel = "Sample",
-     ylabel = "T (K)",
-     color = :teal,
-     lw = 1.5,
-     size = (800, 300),
-     legend = false,
-     grid = false)
+# ╔═╡ ad908e7d-8b89-497f-86a7-f243b0875b7e
+md"""
+$(@bind MCMC_x_min Slider(xmin:xmax, default=xmin))
+$(@bind MCMC_x_max Slider(xmin:xmax, default=xmax))
+"""
 
-# ╔═╡ 20b97630-92e0-40ec-8e91-0a86f0f6f53e
-describe(chain)
+# ╔═╡ b6b03615-a858-434c-bcb6-fc051ff16f83
+MCMC_x_max
 
-# ╔═╡ 976520c3-4e2d-4784-80c4-f5cb757ae6dd
+# ╔═╡ 747ac7f3-0bc9-4acb-a686-599f2d3b5ea7
+xmin, xmax
+
+# ╔═╡ e84c8754-723c-4887-b73e-5997e0789c98
 begin
-	# Mean of the posterior samples for A and T
-	A_samples = chain[:A]
-	T_samples = chain[:T]
-	
-	mean_A = mean(A_samples)
-	mean_T = mean(T_samples)
-	
-	# Median of the posterior samples for A and T
-	median_A = median(A_samples)
-	median_T = median(T_samples)
-	
-	# 95% credible interval for A and T (2.5th and 97.5th percentiles)
-	ci_A = quantile(A_samples, [0.025, 0.975])
-	ci_T = quantile(T_samples, [0.025, 0.975])
-	
-	println("Mean of A: ", mean_A)
-	println("Mean of T: ", mean_T)
-	
-	println("Median of A: ", median_A)
-	println("Median of T: ", median_T)
-	
-	println("95% credible interval for A: ", ci_A)
-	println("95% credible interval for T: ", ci_T)
+	y1_residuals = df_test.flux - planck_cgs(mean_A, df_test.loglam, ci_T[1])
+	y2_residuals = df_test.flux - planck_cgs(mean_A, df_test.loglam, ci_T[2])
+
+	plot(df_test.loglam, y1_residuals,
+		label = "Lower Bound Residuals",
+		xlabel = "log(λ) Å",
+		ylabel = "Data - Model [10^-17 erg/cm²/s/Å]",
+		title = "Model vs. Data Residual Plot",
+		alpha = 1,
+	    markersize=3,
+	    linewidth=1,
+		markerstrokecolor = :transparent,
+		markerstrokewidth = 0,
+	    legend=:topleft)
+	plot!(df_test.loglam, y2_residuals,
+		label = "Upper Bound Residuals",
+		alpha = .5,
+	    markersize=3,
+	    linewidth=1,
+		markerstrokecolor = :transparent,
+		markerstrokewidth = 0)
 end
 
 # ╔═╡ 0d09493b-f932-465c-8355-244efe20daae
@@ -3617,23 +3688,29 @@ version = "1.4.1+2"
 # ╟─3238d955-c92a-4981-8493-ffc1b66c4840
 # ╟─fb1a5aee-507e-4f35-b034-ecf3826a2209
 # ╟─ac9b44d4-3c48-4c11-97cc-a3d55456b0a1
-# ╟─8e039816-a06a-4f79-bf77-d1ea7f60d3f2
+# ╠═8e039816-a06a-4f79-bf77-d1ea7f60d3f2
 # ╟─c559c08f-48ff-44c2-8ea7-801c76c71027
 # ╟─cc8ee21b-4cf6-4236-b905-d8ce4ef0caba
 # ╟─e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
 # ╟─0063c9f0-19ab-44f3-ae1c-1c30784b8741
 # ╟─775e5751-a608-4632-be62-cc877deb056b
+# ╟─a51abe1b-3369-4660-8acf-c26dbe79bfc5
 # ╟─9afe3e82-e6b9-40ea-9ccd-50357195e89b
-# ╠═b71ed739-d026-4fa5-8148-3ac19bcc3ff6
-# ╠═88193288-e2d0-4413-81c6-4b3239bc08c6
-# ╠═85923ffd-7446-4711-bc70-76e34da96a72
 # ╠═81b10366-5e8c-417f-a8bf-465c0de32442
 # ╟─addcdacb-51ed-4ff1-af38-7fdc762d394b
 # ╟─dbd6c860-9e27-48cd-9944-c992d7ab33f4
 # ╟─f037c8b2-e647-4bb9-ba8e-1f8b5000de7d
 # ╟─4749c595-3ef9-43f8-a0c2-d8c510cfb002
-# ╠═20b97630-92e0-40ec-8e91-0a86f0f6f53e
-# ╠═976520c3-4e2d-4784-80c4-f5cb757ae6dd
+# ╟─976520c3-4e2d-4784-80c4-f5cb757ae6dd
+# ╠═b71ed739-d026-4fa5-8148-3ac19bcc3ff6
+# ╠═ad908e7d-8b89-497f-86a7-f243b0875b7e
+# ╠═747ac7f3-0bc9-4acb-a686-599f2d3b5ea7
+# ╠═b6b03615-a858-434c-bcb6-fc051ff16f83
+# ╟─e84c8754-723c-4887-b73e-5997e0789c98
+# ╟─d9d69224-43cc-4ff6-b61c-6df54ec4d8ad
+# ╟─dbbe8b29-445d-4595-9bcb-714184123622
+# ╠═88193288-e2d0-4413-81c6-4b3239bc08c6
+# ╠═85923ffd-7446-4711-bc70-76e34da96a72
 # ╠═39cef286-62b2-46b5-a7cc-39f23297ba1b
 # ╠═0d09493b-f932-465c-8355-244efe20daae
 # ╠═c0802661-fbba-4b84-9293-52cd73bf6679
