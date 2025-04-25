@@ -44,11 +44,13 @@ begin
 	using Base.Threads
 	using OrderedCollections
 	using Statistics
+	using StatsBase
 	using Missings
 	using QuadGK
 	using Distributions
 	using Turing
 	using StatsPlots
+	using MCMCChains
 	# using Interact
 	using FITSIO
 	using Polynomials
@@ -149,7 +151,7 @@ $B(λ, T) = \frac{2hc^2}{λ^5}\frac{1}{e^\frac{hc}{kλT}-1}$
 
 To give the optimizer an easier time, we can estimate this under Wein's Limit:
 
-$\ln(B(λ, T)) ≈ \ln(Ahc^2) -5\ln(λ) - \frac{hc}{kλT} = \ln(M(λ, T))$
+$\ln(B(λ, T)) ≈ \ln(A) + \frac{hc}{kλT} = \ln(M(λ, T))$
 
 We then use a reduced weighted χ² as the minimizing function
 
@@ -169,10 +171,29 @@ $\frac{hc}{kλT} ≈ 1: λ \in [10^{3.6}, 10^4] Å\text{, }T \in [2300, 7000] K
 * No error bars??"""
 
 # ╔═╡ 775e5751-a608-4632-be62-cc877deb056b
-md"""# Bayesean MCMC"""
+md"""# Bayesian MCMC"""
 
 # ╔═╡ 9afe3e82-e6b9-40ea-9ccd-50357195e89b
-md"""TO ADD - section talking about Bayesean framework """
+md"""Deterministic Model:
+
+$F(λ; A,T)=A*B(λ,T)$
+
+*read as: "Total modeled flux desnity at λ, given the object emits a blackbody with temperature T, scaled by A*
+
+For simplicity, assume that flux has Gaussian Noise:
+
+$\text{fluxᵢ} \sim \mathcal{N}(F(λᵢ;A,T),σᵢ)$
+
+Because the eBOSS spectrograph has a well-defined noise spectrum, $σᵢ$ is sampled from the data.
+
+This generates the following likelihood function:
+
+$P(D ~|~ A,T) = ∏_{i}\mathcal{N}(\text{fluxᵢ} ~ |~ \mathcal{N}(F(λᵢ;A,T),σᵢ))$
+
+Finally, Baysian inference:
+
+$P(A,T ~|~ D) = \frac{P(D ~|~ A,T)*P(A,T)}{P(D)}$
+"""
 
 # ╔═╡ 88193288-e2d0-4413-81c6-4b3239bc08c6
 function trapezoid_integrate(x, y)
@@ -267,7 +288,7 @@ end
 @model function bayesian_planck(df)
     # Priors
     A ~ LogNormal(0, 1)                      # Amplitude (positive)
-    T ~ Truncated(Normal(6000, 2000), 2000, 10000)  # Temperature with soft prior
+    T ~ Truncated(Normal(6000, 2000), 2000, 30000)  # Temperature with soft prior
 
     for i in 1:length(df.loglam)
         λ_cm = 10.0^df.loglam[i] * 1e-8      # Convert log₁₀(Å) → cm
@@ -630,13 +651,57 @@ begin
 	end
 end;
 
-# ╔═╡ 0cd65c7d-d2f5-4fc6-8299-d00a1a6a7cce
-begin
-	plot(chain)
-end
+# ╔═╡ f037c8b2-e647-4bb9-ba8e-1f8b5000de7d
+density(chain, :T,  
+	    title = "Posterior Density for Temperature",
+        xlabel = "T (K)",
+        ylabel = "Density",
+        color = :crimson,
+        lw = 2,
+        size = (600, 300),
+        legend = false,
+        grid = false)
+
+# ╔═╡ 4749c595-3ef9-43f8-a0c2-d8c510cfb002
+traceplot(chain, :T,
+     title = "Trace for Temperature",
+     xlabel = "Sample",
+     ylabel = "T (K)",
+     color = :teal,
+     lw = 1.5,
+     size = (800, 300),
+     legend = false,
+     grid = false)
 
 # ╔═╡ 20b97630-92e0-40ec-8e91-0a86f0f6f53e
 describe(chain)
+
+# ╔═╡ 976520c3-4e2d-4784-80c4-f5cb757ae6dd
+begin
+	# Mean of the posterior samples for A and T
+	A_samples = chain[:A]
+	T_samples = chain[:T]
+	
+	mean_A = mean(A_samples)
+	mean_T = mean(T_samples)
+	
+	# Median of the posterior samples for A and T
+	median_A = median(A_samples)
+	median_T = median(T_samples)
+	
+	# 95% credible interval for A and T (2.5th and 97.5th percentiles)
+	ci_A = quantile(A_samples, [0.025, 0.975])
+	ci_T = quantile(T_samples, [0.025, 0.975])
+	
+	println("Mean of A: ", mean_A)
+	println("Mean of T: ", mean_T)
+	
+	println("Median of A: ", median_A)
+	println("Median of T: ", median_T)
+	
+	println("95% credible interval for A: ", ci_A)
+	println("95% credible interval for T: ", ci_T)
+end
 
 # ╔═╡ 0d09493b-f932-465c-8355-244efe20daae
 trapezoid_integrate(df_test.loglam, df_test.flux)
@@ -645,7 +710,7 @@ trapezoid_integrate(df_test.loglam, df_test.flux)
 begin
 	function log_planck(A, λ::AbstractVector, T::Float64)
 		cm_λ = (10 .^ λ) .* 10^(-8)
-		ln_Bλ   = log(A) * log(h * c^2) .- (5 .* log.(cm_λ)) .- ((h*c)./(k .* cm_λ .* T))
+		ln_Bλ   = log(A) .+ ((h*c)./(k .* cm_λ .* T))
 		return ln_Bλ
 	end
 
@@ -771,6 +836,7 @@ Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 FITSIO = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
 FilePaths = "8fc22ac5-c921-52a6-82fd-178b2807b824"
 LsqFit = "2fda8390-95c7-5789-9bda-21331edee243"
+MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
 Missings = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
@@ -780,6 +846,7 @@ Polynomials = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
@@ -792,6 +859,7 @@ Distributions = "~0.25.118"
 FITSIO = "~0.17.4"
 FilePaths = "~0.8.3"
 LsqFit = "~0.15.0"
+MCMCChains = "~6.0.7"
 Missings = "~1.2.0"
 Optim = "~1.12.0"
 OrderedCollections = "~1.8.0"
@@ -801,6 +869,7 @@ Polynomials = "~4.0.19"
 PyCall = "~1.96.4"
 QuadGK = "~2.11.2"
 Statistics = "~1.11.1"
+StatsBase = "~0.34.4"
 StatsPlots = "~0.15.7"
 Tables = "~1.12.0"
 Turing = "~0.37.0"
@@ -812,7 +881,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "4b82b5051e98f0b67c03d0bd9240c64206a89ccf"
+project_hash = "47f94e9ed9a3ba617cd9a5beb6f8464e5dc2d61a"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -3536,7 +3605,7 @@ version = "1.4.1+2"
 # ╟─898652bb-2250-4b87-90ae-d96f34cf6ce2
 # ╟─061e7bdb-aa45-4519-9df2-9889848f3bb4
 # ╟─6aeb9e34-a1ce-4eb8-a88e-548e12d1e692
-# ╠═b80a5889-6309-4218-9857-921b7488a8af
+# ╟─b80a5889-6309-4218-9857-921b7488a8af
 # ╟─ac5d4861-8af7-47f4-8bab-cd05daaabce5
 # ╟─a57ce818-ec1f-4840-9fb5-c2a67aadd412
 # ╟─0c941b57-c185-4242-912f-c4afc03d4061
@@ -3554,15 +3623,17 @@ version = "1.4.1+2"
 # ╟─e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
 # ╟─0063c9f0-19ab-44f3-ae1c-1c30784b8741
 # ╟─775e5751-a608-4632-be62-cc877deb056b
-# ╠═9afe3e82-e6b9-40ea-9ccd-50357195e89b
+# ╟─9afe3e82-e6b9-40ea-9ccd-50357195e89b
 # ╠═b71ed739-d026-4fa5-8148-3ac19bcc3ff6
 # ╠═88193288-e2d0-4413-81c6-4b3239bc08c6
 # ╠═85923ffd-7446-4711-bc70-76e34da96a72
 # ╠═81b10366-5e8c-417f-a8bf-465c0de32442
 # ╟─addcdacb-51ed-4ff1-af38-7fdc762d394b
 # ╟─dbd6c860-9e27-48cd-9944-c992d7ab33f4
-# ╠═0cd65c7d-d2f5-4fc6-8299-d00a1a6a7cce
+# ╟─f037c8b2-e647-4bb9-ba8e-1f8b5000de7d
+# ╟─4749c595-3ef9-43f8-a0c2-d8c510cfb002
 # ╠═20b97630-92e0-40ec-8e91-0a86f0f6f53e
+# ╠═976520c3-4e2d-4784-80c4-f5cb757ae6dd
 # ╠═39cef286-62b2-46b5-a7cc-39f23297ba1b
 # ╠═0d09493b-f932-465c-8355-244efe20daae
 # ╠═c0802661-fbba-4b84-9293-52cd73bf6679
