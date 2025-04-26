@@ -80,16 +80,14 @@ end
 # ╔═╡ 3a9c8be6-e990-11ef-044c-57e8b712c0fb
 md"
 # Stellar Temperature Dashboard
-TO ADD More Introduction Stuff
-The goal of this dashboard is to ingest SDSS MaSTAR data from DR17 then estimate the temperature of stars. \
-
-
 Garrett Brady - gab5654@psu.edu \
 Start: Feb 12th, 2025 
-"
 
-# ╔═╡ c8534b38-00a8-468c-a3c0-eb78bb58ccc2
-md""" TO ADD: section talking about SDSS MaSTAR catalog"""
+The goal of this dashboard is to estimate the effective temperatures of stars using the MaSTAR Catalog from SDSS DR17. Three models are used, one 'linearized' under Wein's limit, one fitting $B(λ, T)$, and one using MCMC Bayesian Inference.
+
+## Introduction to SDSS MaSTAR
+The MaSTAR catalog in SDSS DR17 provides a library of over 24,000 flux-calibrated stellar spectra observed with the eBOSS spectrograph, spanning 3622–10354 Å at R ~ 1800, designed to support MaNGA’s stellar population modeling. It includes stars across a broad range of effective temperatures, surface gravities, and metallicities, with emphasis on filling gaps in empirical coverage of the HR diagram. The spectra are coadded and calibrated using MaNGA’s data reduction pipeline, with associated metadata and quality flags to ensure reliability for population synthesis and stellar astrophysics. ~ *ChatGPT summary of MaSTAR Survey*
+"
 
 # ╔═╡ 2451cb46-729a-45c4-b0c0-d2d3e8b9e297
 begin
@@ -124,7 +122,7 @@ Enter a decmial value for the ivar threshold: $(@bind ivar_ confirm(TextField(de
 
 ##### Spectrum Edges
 Check box to remove edges: $(@bind remove_edges CheckBox(default=true)) \
-Check box to remove negative flux: $(@bind remove_negative_flux CheckBox(default=true))
+Check box to remove negative flux: $(@bind remove_negative_flux CheckBox(default=true)) (necessary for Wein's Model)
 
 ##### Bit Masks
 Check box to use AND mask: $(@bind use_and_mask CheckBox(default=true)) \
@@ -158,9 +156,6 @@ We then use a reduced weighted χ² as the minimizing function
 $χ² = \frac{1}{n-2}∑\text{ivar}*(M(λ, T)-F_{\lambda})^2$
 "
 
-# ╔═╡ cc8ee21b-4cf6-4236-b905-d8ce4ef0caba
-md"""TO ADD: ability to zoom on spectral features between residuals and main plot, discussion about model limitations """
-
 # ╔═╡ 0063c9f0-19ab-44f3-ae1c-1c30784b8741
 md"""## Model Limitations 
 * Wein's Displacement Law does not apply well as many stars have 
@@ -171,10 +166,8 @@ $\frac{hc}{kλT} ≈ 1: λ \in [10^{3.6}, 10^4] Å\text{, }T \in [2300, 7000] K
 * No error bars??"""
 
 # ╔═╡ 0ec5e8bb-08cb-4dae-9bb8-ed18fbe83a23
-md"""# More Nonlinear Optimization """
+md"""# More Nonlinear Optimization 
 
-# ╔═╡ c3d5c8c4-e3b0-44cc-9119-0e992b80ce46
-md"""
 ## Model Structure
 
 Here, we are using
@@ -218,19 +211,18 @@ Select classification: $(@bind stellar_classification Select(["O Type: T ~ 30,00
 Spectral features to plot: $(@bind spectral_features_amount Select(["None", "Some", "Most"]))
 """
 
+# ╔═╡ c7396256-993f-4a27-b40b-df61cc5f6cd6
+md"""*If temperature is at the boundary of the temperature, try a different model* """
+
 # ╔═╡ 8f3e97dc-2653-4dac-9aef-aeec25560519
 md"""## Model Limitations 
 * Does not provide error bars
 * Very sensitive to weighting function"""
 
 # ╔═╡ 775e5751-a608-4632-be62-cc877deb056b
-md"""# Bayesian MCMC"""
+md"""# Bayesian MCMC
 
-# ╔═╡ a51abe1b-3369-4660-8acf-c26dbe79bfc5
-md"""## Model Structure"""
-
-# ╔═╡ 9afe3e82-e6b9-40ea-9ccd-50357195e89b
-md"""Deterministic Model:
+## Model Structure
 
 $F(λ; A,T)=A*B(λ,T)$
 
@@ -264,8 +256,9 @@ Click this box to run Bayesean MCMC: $(@bind run_MCMC CheckBox())"""
 # ╔═╡ d9d69224-43cc-4ff6-b61c-6df54ec4d8ad
 md"""
 ## Model Limitations
-* Takes a while to run
+* Takes a while to run (sometimes +20 mins)
 * Gets caught in Local Minima
+* Does not sufficiently reduce χ² to warrant computation cost?
 """
 
 # ╔═╡ e4877e8f-a172-4346-9422-dd1005a4f71b
@@ -276,6 +269,7 @@ md"""
 * Better / adaptive colors for plots
 * Integral of Radiance as penalty function
 * More error analysis
+* Better segmentation & removing error messages on boot-up
 """
 
 # ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
@@ -472,7 +466,7 @@ begin
 					[3900, 5300],
 					[2300, 3900]];
 	temperature_bounds = stellar_matrix[stellar_index]
-	md"Classificaiton temperature bounds"
+	md"classificaiton temperature bounds"
 end
 
 # ╔═╡ 81b10366-5e8c-417f-a8bf-465c0de32442
@@ -994,9 +988,18 @@ begin
 	md"""Some more complex loss functions. Potentially add one about integral loss?"""
 end
 
+# ╔═╡ 0c3a87d1-7436-4eb3-8bb5-695a6f4be155
+begin
+	MCMC_model = planck_cgs(mean_A, df_test.loglam, mean_T)
+	MCMC_χ     = sum((MCMC_model .- df_test.flux).^2) ./ (length(df_test.flux) -2)
+	md"""
+	Effective Temperature: $(Int(trunc(mean_T))) K \
+	test set χ²: $(round(MCMC_χ, digits=3))  """
+end
+
 # ╔═╡ c0802661-fbba-4b84-9293-52cd73bf6679
 begin
-	fit_results = optimize(penalty_planck_fit, [1., 15000, 100])
+	fit_results = optimize(penalty_planck_fit, [1., (temperature_bounds[1]+temperature_bounds[2])/2, 100])
 	A_fit, T_fit, C_fit = fit_results.minimizer
 	χ²_train = log_results.minimum
 end
@@ -1059,6 +1062,43 @@ begin
 
 	plot(p)
 end
+
+# ╔═╡ 51ae2591-5788-4db9-98f7-23ea4bfa9bd6
+begin
+	nonlinear_model = planck_cgs(A_fit, df_test.loglam, T_fit)
+	nonlinear_χ     = sum((MCMC_model .- df_test.flux).^2) ./ (length(df_test.flux) -2)
+	md"""
+	Effective Temperature: $(Int(trunc(T_fit))) K \
+	test set χ²: $(round(nonlinear_χ, digits=3))  """
+end
+
+# ╔═╡ 2bb8134d-6db1-4b39-af07-94977d66b298
+begin
+	nonlinear_residuals = df_test.flux - planck_cgs(A_fit, df_test.loglam, T_fit)
+	plot(df_test.loglam, nonlinear_residuals,
+		label = "Nonlinear Residuals",
+		xlabel = "log(λ) Å",
+		xlim = (Planck_x_min, Planck_x_max),
+		ylabel = "[10^-17 erg/cm²/s/Å]",
+		title = "Model vs. Data Residual Plot",
+		alpha = 1,
+	    markersize=3,
+	    linewidth=1,
+		markerstrokecolor = :transparent,
+		markerstrokewidth = 0,
+	    legend=:topright)
+end
+
+# ╔═╡ 6a970c7d-4d25-44d5-9123-ab60fd5b1b10
+md"""
+# Final Comparisons
+
+| Method      | Wien's        | Nonlinear    | MCMC         |
+|-------------|---------------|--------------|--------------|
+| T           | $T_log         | $T_fit        | $mean_T       |
+| test χ²          | $log_χ²_test   | $nonlinear_χ            | $MCMC_χ      |
+
+"""
 
 # ╔═╡ e162283d-fe0b-458a-82a0-9b1ed5b7d660
 begin
@@ -3936,7 +3976,6 @@ version = "1.4.1+2"
 
 # ╔═╡ Cell order:
 # ╟─3a9c8be6-e990-11ef-044c-57e8b712c0fb
-# ╟─c8534b38-00a8-468c-a3c0-eb78bb58ccc2
 # ╟─2451cb46-729a-45c4-b0c0-d2d3e8b9e297
 # ╟─898652bb-2250-4b87-90ae-d96f34cf6ce2
 # ╟─061e7bdb-aa45-4519-9df2-9889848f3bb4
@@ -3955,46 +3994,47 @@ version = "1.4.1+2"
 # ╟─ac9b44d4-3c48-4c11-97cc-a3d55456b0a1
 # ╟─8e039816-a06a-4f79-bf77-d1ea7f60d3f2
 # ╟─c559c08f-48ff-44c2-8ea7-801c76c71027
-# ╟─cc8ee21b-4cf6-4236-b905-d8ce4ef0caba
 # ╟─e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
 # ╟─0063c9f0-19ab-44f3-ae1c-1c30784b8741
 # ╟─0ec5e8bb-08cb-4dae-9bb8-ed18fbe83a23
-# ╟─c3d5c8c4-e3b0-44cc-9119-0e992b80ce46
 # ╟─439ddb48-4a8d-4d84-b105-2b575261297f
 # ╟─efa7c095-a3f4-4936-83a6-b7237ab16fe5
 # ╟─5dec2201-0ba7-458b-bc5d-7b08917abb29
 # ╟─5e311ae7-acd9-4b54-a798-8f808a159df5
+# ╟─c7396256-993f-4a27-b40b-df61cc5f6cd6
 # ╟─b205f32c-566f-4dc0-9cbd-5594aac093cd
+# ╟─51ae2591-5788-4db9-98f7-23ea4bfa9bd6
+# ╟─2bb8134d-6db1-4b39-af07-94977d66b298
 # ╟─8f3e97dc-2653-4dac-9aef-aeec25560519
 # ╟─775e5751-a608-4632-be62-cc877deb056b
-# ╟─a51abe1b-3369-4660-8acf-c26dbe79bfc5
-# ╟─9afe3e82-e6b9-40ea-9ccd-50357195e89b
 # ╠═81b10366-5e8c-417f-a8bf-465c0de32442
 # ╟─addcdacb-51ed-4ff1-af38-7fdc762d394b
-# ╠═dbd6c860-9e27-48cd-9944-c992d7ab33f4
+# ╟─dbd6c860-9e27-48cd-9944-c992d7ab33f4
 # ╟─f037c8b2-e647-4bb9-ba8e-1f8b5000de7d
 # ╟─4749c595-3ef9-43f8-a0c2-d8c510cfb002
 # ╟─976520c3-4e2d-4784-80c4-f5cb757ae6dd
 # ╟─b71ed739-d026-4fa5-8148-3ac19bcc3ff6
 # ╟─e162283d-fe0b-458a-82a0-9b1ed5b7d660
 # ╟─e84c8754-723c-4887-b73e-5997e0789c98
+# ╟─0c3a87d1-7436-4eb3-8bb5-695a6f4be155
 # ╟─d9d69224-43cc-4ff6-b61c-6df54ec4d8ad
+# ╟─6a970c7d-4d25-44d5-9123-ab60fd5b1b10
 # ╟─e4877e8f-a172-4346-9422-dd1005a4f71b
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╟─de71a944-9d7b-4378-851c-0578cfae4c31
 # ╠═85923ffd-7446-4711-bc70-76e34da96a72
 # ╠═c0802661-fbba-4b84-9293-52cd73bf6679
-# ╠═dc67d6f3-794b-44bd-8db9-c8a7067d8355
-# ╠═6532f90e-22fb-44e3-9946-1936f801361f
+# ╟─dc67d6f3-794b-44bd-8db9-c8a7067d8355
+# ╟─6532f90e-22fb-44e3-9946-1936f801361f
 # ╟─5b9762fe-a94e-40bb-8d73-be7369427336
 # ╟─ded89e4a-240e-4665-aa9e-8a86d555f6e3
 # ╟─ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
 # ╟─2a314b1c-6619-4571-908f-3e507cb4899e
 # ╟─5f723f4c-5491-4229-abd0-776a9e6fd0ae
-# ╟─36dffded-3d67-4dfb-a44e-f834cf40f6e5
+# ╠═36dffded-3d67-4dfb-a44e-f834cf40f6e5
 # ╟─c6a532b4-4430-41d0-91ac-07f52637342e
 # ╟─48027e84-2ba4-4206-b775-e71d0cc4b790
-# ╠═7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
+# ╟─7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
 # ╠═29485c7e-0b1b-4f36-bd5b-0391098389eb
 # ╠═b5c71318-4d01-4a14-88bd-a95d40c624ec
 # ╠═96144435-2edc-4ff4-a41a-22e97641106d
