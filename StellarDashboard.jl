@@ -170,6 +170,59 @@ $\frac{hc}{kλT} ≈ 1: λ \in [10^{3.6}, 10^4] Å\text{, }T \in [2300, 7000] K
 * Patterns in residual plot
 * No error bars??"""
 
+# ╔═╡ 0ec5e8bb-08cb-4dae-9bb8-ed18fbe83a23
+md"""# More Nonlinear Optimization """
+
+# ╔═╡ c3d5c8c4-e3b0-44cc-9119-0e992b80ce46
+md"""
+## Model Structure
+
+Here, we are using
+
+Loss:
+
+$∑\text{ivar}*(B(λ, T) - F_{λ})^2 + T\_penalty$
+
+Penalty:
+
+$\text{T\_penalty}(w, T, T_{\text{min}}, T_{\text{max}}) =
+\begin{cases}
+(T - T_{\text{min}})^2 \cdot w, & \text{if } T < T_{\text{min}} \\
+(T - T_{\text{max}})^2 \cdot w, & \text{if } T > T_{\text{max}} \\
+0, & \text{otherwise}
+\end{cases}$
+
+Here we also plot notable spectral features, which help inform decisions about classification.
+"""
+
+# ╔═╡ 439ddb48-4a8d-4d84-b105-2b575261297f
+md"""
+## Key Spectral Features in Stellar Classification
+
+| **Feature**        | **Wavelength [Å]**     | **Sensitive To**             | **Stellar Types** | **Absorption/Emission**    | **Notes** |
+|--------------------|------------------------|-------------------------------|-------------------|-----------------------------|-----------|
+| **Ca II H & K**     | 3933.7, 3968.5          | Temperature, Activity         | F–M               | Absorption (Emission if active) | Strong in cool stars; used to gauge stellar chromospheric activity and stellar aging |
+| **Hβ**             | 4861                    | Temperature, Surface Gravity  | O–A               | Absorption (Emission in Be stars, active stars) | Prominent in A stars; broadening reveals surface gravity |
+| **Mg b Triplet**    | ~5175                   | Surface Gravity, Metallicity  | G–K               | Absorption only             | Strong in old, metal-rich stars; helps distinguish dwarfs from giants |
+| **Na D Doublet**    | 5890, 5896 (avg: 5892)   | Gravity, Interstellar Medium  | K–M               | Absorption (Rare emission)   | Deep in cool stars; traces interstellar dust and gas |
+| **Hα**             | 6563                    | Activity, Outflows            | A–M               | Absorption or Emission       | Emission common in active or young stars (e.g., T Tauri, Be stars) |
+| **TiO Bands**       | >7000 (broad regions)    | Temperature                   | M                 | Absorption only              | Dominant in M stars; strong molecular absorption, defining for late types |
+
+*source: https://physics.nist.gov/PhysRefData/ASD/lines_form.html*
+"""
+
+# ╔═╡ efa7c095-a3f4-4936-83a6-b7237ab16fe5
+md"""
+Select classification: $(@bind stellar_classification Select(["O Type: T ~ 30,000 K", "B Type: T ~ 10,000 K ", "A Type: T ~ 7,300 K", "F Type: T ~ 6,000 K", "G Type: T ~ 5,300 K", "K Type: T ~ 3,900 K", "M Type: T ~ 2,300 K"])) \
+
+Spectral features to plot: $(@bind spectral_features_amount Select(["None", "Some", "Most"]))
+"""
+
+# ╔═╡ 8f3e97dc-2653-4dac-9aef-aeec25560519
+md"""## Model Limitations 
+* Does not provide error bars
+* Very sensitive to weighting function"""
+
 # ╔═╡ 775e5751-a608-4632-be62-cc877deb056b
 md"""# Bayesian MCMC"""
 
@@ -196,27 +249,34 @@ $P(D ~|~ A,T) = ∏_{i}\mathcal{N}(\text{fluxᵢ} ~ |~ \mathcal{N}(F(λᵢ;A,T),
 Finally, Baysian inference:
 
 $P(A,T ~|~ D) = \frac{P(D ~|~ A,T)*P(A,T)}{P(D)}$
+
+Priors:
+* A - Log Normal: Positive and can span several orders of magnitude
+* T - Truncated Normal: Seemed to preform well
 """
 
 # ╔═╡ addcdacb-51ed-4ff1-af38-7fdc762d394b
-md"""Click this box to run Bayesean MCMC: $(@bind run_MCMC CheckBox())"""
+md"""
+The Bayesian model uses the classification selected from the previous section as basis for the prior. Make sure your have your prefered classification chosen before running.
+
+Click this box to run Bayesean MCMC: $(@bind run_MCMC CheckBox())"""
 
 # ╔═╡ d9d69224-43cc-4ff6-b61c-6df54ec4d8ad
 md"""
 ## Model Limitations
-"""
-
-# ╔═╡ dbbe8b29-445d-4595-9bcb-714184123622
-md"""
 * Takes a while to run
 * Gets caught in Local Minima
-* Does not fit emission / absorption features
 """
 
-# ╔═╡ 88193288-e2d0-4413-81c6-4b3239bc08c6
-function trapezoid_integrate(x, y)
-    return sum(diff(x) .* ((y[1:end-1] .+ y[2:end]) ./ 2))
-end
+# ╔═╡ e4877e8f-a172-4346-9422-dd1005a4f71b
+md"""
+# Future Improvements
+* Fitting spectral features from continuum w/ voigt (convolution of Gaussian and Lorentzian)
+* Redshift fitting for spectral features
+* Better / adaptive colors for plots
+* Integral of Radiance as penalty function
+* More error analysis
+"""
 
 # ╔═╡ 1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 md""" # All the Extra Junk"""
@@ -227,67 +287,121 @@ md" ### Optimizing Functions"
 # ╔═╡ ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
 md"### Variable Defs to Keep it Clean"
 
-# ╔═╡ a8cf807f-79ee-4c9d-95dd-930b243e491c
-begin
-	spectral_lines = Dict(
-	    "Hydrogen (Balmer)" => Dict(
-	        "Hα" => 6563,
-	        "Hβ" => 4861,
-	        "Hγ" => 4340,
-	        "Hδ" => 4102,
-	        "Hε" => 3970,
-	        "Hζ" => 3889
-	    ),
-	    "Helium I" => Dict(
-	        "He I 4471" => 4471,
-	        "He I 4026" => 4026,
-	        "He I 4388" => 4388,
-	        "He I 4713" => 4713,
-	        "He I 4922" => 4922,
-	        "He I 5876" => 5876
-	    ),
-	    "Helium II" => Dict(
-	        "He II 4686" => 4686,
-	        "He II 4541" => 4541,
-	        "He II 5411" => 5411
-	    ),
-	    "Calcium" => Dict(
-	        "Ca II K" => 3933,
-	        "Ca II H" => 3968,
-	        "Ca II 8498" => 8498,
-	        "Ca II 8542" => 8542,
-	        "Ca II 8662" => 8662,
-	        "Ca I 4226" => 4226
-	    ),
-	    "Sodium" => Dict(
-	        "Na I D1" => 5896,
-	        "Na I D2" => 5890
-	    ),
-	    "Magnesium" => Dict(
-	        "Mg I 5167" => 5167,
-	        "Mg I 5172" => 5172,
-	        "Mg I 5183" => 5183,
-	        "Mg II 4481" => 4481
-	    ),
-	    "Iron" => Dict(
-	        "Fe I 4045" => 4045,
-	        "Fe I 4383" => 4383,
-	        "Fe I 5270" => 5270,
-	        "Fe I 5328" => 5328,
-	        "Fe I 6495" => 6495,
-	        "Fe II 4924" => 4924,
-	        "Fe II 5018" => 5018,
-	        "Fe II 5169" => 5169
-	    ),
-	    "Titanium" => Dict(
-	        "Ti II 3759" => 3759,
-	        "Ti II 3761" => 3761,
-	        "Ti II 3913" => 3913,
-	        "Ti II 3933" => 3933
-	    )
-	)
+# ╔═╡ 2a314b1c-6619-4571-908f-3e507cb4899e
+const spectral_features = Dict(
+    "O" => [
+        ("He II", 4686.0, :purple),
+        ("Hβ", 4861.3, :blue),
+        ("Hα", 6562.8, :blue)
+    ],
+    "B" => [
+        ("He I", 4471.0, :violet),
+        ("Hγ", 4340.5, :blue),
+        ("Hβ", 4861.3, :blue),
+        ("Hα", 6562.8, :blue)
+    ],
+    "A" => [
+        ("Hδ", 4101.7, :blue),
+        ("Hγ", 4340.5, :blue),
+        ("Hβ", 4861.3, :blue),
+        ("Hα", 6562.8, :blue)
+    ],
+    "F" => [
+        ("Ca II K", 3933.7, :green),
+        ("Ca II H", 3968.5, :green),
+        ("Hβ", 4861.3, :blue),
+        ("Mg b", 5175.0, :orange),
+        ("Hα", 6562.8, :blue)
+    ],
+    "G" => [
+        ("Ca II K", 3933.7, :green),
+        ("Ca II H", 3968.5, :green),
+        ("CH G-band", 4300.0, :gray),
+        ("Mg b", 5175.0, :orange),
+        ("Na D", 5892.0, :yellow),
+        ("Hα", 6562.8, :blue)
+    ],
+    "K" => [
+        ("Fe I", 4383.5, :brown),
+        ("Mg b", 5175.0, :orange),
+        ("Na D", 5892.0, :yellow),
+        ("Ca I", 6162.0, :green),
+        ("Hα", 6562.8, :blue)
+    ],
+    "M" => [
+        ("TiO band", 7050.0, :red),
+        ("K I", 7665.0, :magenta),
+        ("Ca II triplet", 8498.0, :green),
+        ("Ca II triplet", 8542.0, :green),
+        ("Ca II triplet", 8662.0, :green)
+    ]
+)
 
-end
+
+# ╔═╡ 5f723f4c-5491-4229-abd0-776a9e6fd0ae
+const spectral_features_verbose = Dict(
+    "O" => [
+        ("He II", 4541.0, :purple),
+        ("He II", 4686.0, :purple),
+        ("He I", 4471.0, :magenta),
+        ("N III", 4640.0, :cyan),
+        ("Hγ", 4340.0, :blue),
+        ("Hβ", 4861.3, :blue),
+        ("Hα", 6562.8, :blue)
+    ],
+    "B" => [
+        ("He I", 4471.0, :magenta),
+        ("He I", 4026.2, :magenta),
+        ("Hγ", 4340.0, :blue),
+        ("Hβ", 4861.3, :blue),
+        ("Hα", 6562.8, :blue),
+        ("Mg II", 4481.0, :orange)
+    ],
+    "A" => [
+        ("Hδ", 4101.7, :blue),
+        ("Hγ", 4340.0, :blue),
+        ("Hβ", 4861.3, :blue),
+        ("Hα", 6562.8, :blue),
+        ("Ca II K", 3933.7, :green),
+        ("Ca II H", 3968.5, :green)
+    ],
+    "F" => [
+        ("Ca II K", 3933.7, :green),
+        ("Ca II H", 3968.5, :green),
+        ("Hγ", 4340.0, :blue),
+        ("Hβ", 4861.3, :blue),
+        ("Fe I", 4383.5, :gray),
+        ("Mg II", 4481.0, :orange),
+        ("Na D", 5892.0, :yellow)
+    ],
+    "G" => [
+        ("Ca II K", 3933.7, :green),
+        ("Ca II H", 3968.5, :green),
+        ("CH G-band", 4300.0, :gray),
+        ("Fe I", 4383.5, :gray),
+        ("Mg b", 5175.0, :orange),
+        ("Na D", 5892.0, :yellow),
+        ("Hα", 6562.8, :blue)
+    ],
+    "K" => [
+        ("Ca I", 4226.7, :green),
+        ("Fe I", 4383.5, :gray),
+        ("CH G-band", 4300.0, :gray),
+        ("Na D", 5892.0, :yellow),
+        ("TiO", 7050.0, :red)
+    ],
+    "M" => [
+        ("TiO", 4954.0, :red),
+        ("TiO", 5167.0, :red),
+        ("TiO", 5448.0, :red),
+        ("TiO", 6159.0, :red),
+        ("TiO", 6651.0, :red),
+        ("TiO", 7050.0, :red),
+        ("VO", 7400.0, :pink),
+        ("VO", 7900.0, :pink)
+    ]
+)
+
 
 # ╔═╡ c6a532b4-4430-41d0-91ac-07f52637342e
 # Global Constants
@@ -298,12 +412,75 @@ begin
 	md""" global constants"""
 end
 
+# ╔═╡ 48027e84-2ba4-4206-b775-e71d0cc4b790
+begin
+	ivar_threshold = try parse(Float64, ivar_) catch e 1 end
+	md"""ivar_threshold"""
+end
+
+# ╔═╡ 96144435-2edc-4ff4-a41a-22e97641106d
+	stellar_summary_matrix = [md"""### 🌌 **O-type Stars**
+- **Color:** Blue
+- **Temperature:** 30,000–50,000 K
+- **Spectral Features:** Ionized helium (He II), weak hydrogen lines
+- **Notes:** Extremely hot, massive, and rare; short-lived and UV-bright""", 
+md"""### 🔷 **B-type Stars**
+- **Color:** Blue-white
+- **Temperature:** 10,000–30,000 K
+- **Spectral Features:** Neutral helium (He I), stronger hydrogen lines
+- **Notes:** Still very hot; progenitors of some supernovae""", 
+		md"""### ⚪ **A-type Stars**
+- **Color:** White
+- **Temperature:** 7,500–10,000 K
+- **Spectral Features:** Strong hydrogen Balmer lines, weak metal lines
+- **Notes:** Vega and Sirius are A-type stars""", 
+		md"""### 🟡 **F-type Stars**
+- **Color:** Yellow-white
+- **Temperature:** 6,000–7,500 K
+- **Spectral Features:** Balmer lines + ionized metals (Ca II H&K, Fe II)
+- **Notes:** Intermediate between A and G""", 
+		md"""### ☀️ **G-type Stars**
+- **Color:** Yellow
+- **Temperature:** 5,200–6,000 K
+- **Spectral Features:** Weaker Balmer lines, strong Ca II H&K, metal lines
+- **Notes:** The Sun is a G2V star""",
+		md"""### 🟠 **K-type Stars**
+- **Color:** Orange
+- **Temperature:** 3,700–5,200 K
+- **Spectral Features:** Strong metal lines (Fe, Ca), emerging molecular bands
+- **Notes:** Long-lived, many host exoplanets""",
+		md""" ### 🔴 **M-type Stars**
+- **Color:** Red
+- **Temperature:** <3,700 K
+- **Spectral Features:** Molecule bands (TiO, VO), weak H lines
+- **Notes:** Most common stars in the galaxy, including red dwarfs"""
+	];
+
+# ╔═╡ 5dec2201-0ba7-458b-bc5d-7b08917abb29
+begin
+	stellar_index = findfirst(stellar_classification[1], "OBAFGKM")	
+	stellar_summary_matrix[stellar_index]
+end
+
+# ╔═╡ 36dffded-3d67-4dfb-a44e-f834cf40f6e5
+begin
+	stellar_matrix = [[30000, 100000],
+					[10000, 30000],
+					[7300, 10000],
+					[6000, 7300],
+					[5300, 6000],
+					[3900, 5300],
+					[2300, 3900]];
+	temperature_bounds = stellar_matrix[stellar_index]
+	md"Classificaiton temperature bounds"
+end
+
 # ╔═╡ 81b10366-5e8c-417f-a8bf-465c0de32442
 # need to come back and edit normal values
 @model function bayesian_planck(df)
     # Priors
     A ~ LogNormal(0, 1)                      # Amplitude (positive)
-    T ~ Truncated(Normal(6000, 2000), 2000, 30000)  # Temperature with soft prior
+    T ~ Normal((temperature_bounds[1] + temperature_bounds[2])/2, (temperature_bounds[2] - temperature_bounds[1])/2)  # Temperature with soft prior
 
     for i in 1:length(df.loglam)
         λ_cm = 10.0^df.loglam[i] * 1e-8      # Convert log₁₀(Å) → cm
@@ -311,12 +488,6 @@ end
         σ = 1 / sqrt(df.ivar[i])             # Observational uncertainty
         df.flux[i] ~ Normal(μ, σ)
     end
-end
-
-# ╔═╡ 48027e84-2ba4-4206-b775-e71d0cc4b790
-begin
-	ivar_threshold = try parse(Float64, ivar_) catch e 1 end
-	md"""ivar_threshold"""
 end
 
 # ╔═╡ d44802f5-c8d1-4678-b34e-92e48b67a90b
@@ -476,6 +647,7 @@ end
 # ╔═╡ ac5d4861-8af7-47f4-8bab-cd05daaabce5
 begin
 	num_visits = 1
+	target_pyHDUList = missing
 	if download_target_HDUList
 		# getting the HDUList from SDSS
 		target_pyHDUList = _SDSS.get_spectra(coordinates = result_sky_coords[selected_target])
@@ -526,56 +698,71 @@ end
 
 # ╔═╡ 740e97fd-ec22-4999-a925-0433eba2a4f6
 begin
-	file_id = HDUMatrix_index
-	
-	fits_headers_as_dict = convert_PyObjectHDU_to_Dict.(vec(target_pyHDUList[file_id]));
-	
-	fits_headers = convert_PyObjectHDU_to_FITSHeader.(vec(target_pyHDUList[file_id]));
-	
-	hdu_to_read = vec(target_pyHDUList[file_id])[2];
-	
-	df_coadd = read_PyObject_HDU(hdu_to_read)
+	if !ismissing(target_pyHDUList)
+		file_id = HDUMatrix_index
+		
+		fits_headers_as_dict = convert_PyObjectHDU_to_Dict.(vec(target_pyHDUList[file_id]));
+		
+		fits_headers = convert_PyObjectHDU_to_FITSHeader.(vec(target_pyHDUList[file_id]));
+		
+		hdu_to_read = vec(target_pyHDUList[file_id])[2];
+		
+		df_coadd = read_PyObject_HDU(hdu_to_read)
+	else df_coadd = missing
+	end
 end;
 
 # ╔═╡ 0c941b57-c185-4242-912f-c4afc03d4061
-if show_header fits_headers[1] end
+if show_header && !ismissing(target_pyHDUList) fits_headers[1] end
 
 # ╔═╡ 7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
 begin
 	# Applying filters to the data-frame, user choice on how to clean?
 	boundary     = [3.6, 3.950] # sets the lower and upper limits for a wavelength to be included
+	if !ismissing(df_coadd)
+		df_filtered = df_coadd |> 
+			df_coadd -> if remove_edges
+				filter(:loglam => x -> boundary[1] <= x <= boundary[2], df_coadd)
+			else df_coadd end |>
+			
+			df_coadd -> if remove_negative_flux
+				filter(:flux => x -> x >= 0, df_coadd)
+			else df_coadd end |>
+			
+			df_coadd -> if remove_ivar
+				filter(:ivar => x -> x > ivar_threshold, df_coadd) 
+			else df_coadd end |>
 	
-	df_filtered = df_coadd |> 
-		df_coadd -> if remove_edges
-			filter(:loglam => x -> boundary[1] <= x <= boundary[2], df_coadd)
-		else df_coadd end |>
-		
-		df_coadd -> if remove_negative_flux
-			filter(:flux => x -> x >= 0, df_coadd)
-		else df_coadd end |>
-		
-		df_coadd -> if remove_ivar
-			filter(:ivar => x -> x > ivar_threshold, df_coadd) 
-		else df_coadd end |>
-
-		df_coadd -> if use_and_mask
-			filter(:and_mask => x -> x == 0, df_coadd)
-		else df_coadd end |>
-
-		df_coadd -> if use_or_mask
-			filter(:or_mask => x -> x == 0, df_coadd)
-		else df_coadd end
-	md"""filters pipeline"""
+			df_coadd -> if use_and_mask
+				filter(:and_mask => x -> x == 0, df_coadd)
+			else df_coadd end |>
+	
+			df_coadd -> if use_or_mask
+				filter(:or_mask => x -> x == 0, df_coadd)
+			else df_coadd end
+		md"""filters pipeline"""
+	else df_filtered = missing
+	end
 end
 
 # ╔═╡ aeff15f4-d974-42f1-b2a8-9aabbe10448f
-describe(df_filtered)
+begin
+	if !ismissing(df_filtered)
+		describe(df_filtered)
+	else
+		md"Awaiting User Input..."
+	end
+end
 
 # ╔═╡ 29485c7e-0b1b-4f36-bd5b-0391098389eb
 begin
 	# samples every other point for train / test data
-	df_train = df_filtered[1:2:nrow(df_filtered), :]
-	df_test  = df_filtered[2:2:nrow(df_filtered), :]
+	df_train = missing
+	df_test = missing
+	if !ismissing(df_filtered)
+		df_train = df_filtered[1:2:nrow(df_filtered), :]
+		df_test  = df_filtered[2:2:nrow(df_filtered), :]
+	end
 	md"""splitting df into train and test"""
 end
 
@@ -612,7 +799,7 @@ end
 begin
 	if run_MCMC
 		model1 = bayesian_planck(df_train)
-		chain = sample(model1, NUTS(), 1000)
+		chain = sample(model1, NUTS(), MCMCThreads(), 1000, Int64(Threads.nthreads()) -1)
 	end
 end;
 
@@ -666,116 +853,6 @@ begin
 	println("95% credible interval for A: ", ci_A)
 	println("95% credible interval for T: ", ci_T)
 end
-
-# ╔═╡ 85923ffd-7446-4711-bc70-76e34da96a72
-begin
-	# normalize the estimated spectrum to 10^(-17)
-	# loss with penalty function
-	function planck_cgs(A, λ, T)
-		local cm_λ = (10 .^ λ) .* 10^(-8)
-		Bλ = (A.*h.*c^2 ./ (cm_λ.^5)) .* (ℯ .^ ((h.*c)./(k .* cm_λ .* T)) .- 1).^(-1)
-		return Bλ
-	end
-	
-	function planck_fit(x::AbstractVector)
-		model = planck_cgs(x[1], df_train.loglam, x[2])
-
-		χ_squared = df_train.ivar .* (df_train.flux - model) .^ 2
-		return sum(χ_squared) / (length(df_train.loglam) - 2)
-	end
-
-	function T_penalty(T, Tmin, Tmax)
-		weight = 10
-		if T < Tmin; return (T-Tmin)^2 * weight
-		elseif T > Tmax; return (T-Tmax)^2 * weight
-		else return 0 end
-	end
-
-	function penalty_planck_fit(x::AbstractVector)
-		model = planck_cgs(x[1], df_train.loglam, x[2])
-
-		χ_squared = df_train.ivar .* (df_train.flux - model) .^ 2 .+ T_penalty(x[2], 2000, 30000)
-		return sum(χ_squared) / (length(df_train.loglam) - 2)
-	end
-	md"""Some more complex loss functions. Potentially add one about integral loss?"""
-end
-
-# ╔═╡ b71ed739-d026-4fa5-8148-3ac19bcc3ff6
-begin
-	xmin = minimum(df_test.loglam)
-	xmax = maximum(df_test.loglam)
-	logλ_range = LinRange(xmin, xmax, 5000)
-	Åλ_range   = 10 .^ logλ_range
-	y1 = planck_cgs(mean_A, x_planck, ci_T[1])
-	y2 = planck_cgs(mean_A, x_planck, ci_T[2])
-	
-	scatter(df_test.loglam, df_test.flux,  
-	    # xscale=:log10,  # Log scale for x-axis 
-	    xlabel="Log(λ) [Å]", 
-	    ylabel="[10^-17 erg/cm²/s/Å]",
-	    title="MCMC Blackbody Spectrum",
-	    label="Observed Spectrum",
-		color = "gray",
-		alpha = .5,
-	    markersize=2,
-	    linewidth=.1,
-		markerstrokecolor = :transparent,
-		markerstrokewidth = 0,
-	    legend=:topright)
-	
-	plot!(logλ_range, y1,
-		label = "T Confidence Band", 
-		fillrange = y2,
-		fillalpha = .35)
-
-	plot!(logλ_range, y1,
-		label = "T Lower Bound, T=$(Int(trunc(ci_T[1])))", 
-		color = :red)
-	
-	plot!(logλ_range, y2,
-		label = "T Upper Bound, T=$(Int(trunc(ci_T[2])))",
-		color = :teal )
-end
-
-# ╔═╡ ad908e7d-8b89-497f-86a7-f243b0875b7e
-md"""
-$(@bind MCMC_x_min Slider(xmin:xmax, default=xmin))
-$(@bind MCMC_x_max Slider(xmin:xmax, default=xmax))
-"""
-
-# ╔═╡ b6b03615-a858-434c-bcb6-fc051ff16f83
-MCMC_x_max
-
-# ╔═╡ 747ac7f3-0bc9-4acb-a686-599f2d3b5ea7
-xmin, xmax
-
-# ╔═╡ e84c8754-723c-4887-b73e-5997e0789c98
-begin
-	y1_residuals = df_test.flux - planck_cgs(mean_A, df_test.loglam, ci_T[1])
-	y2_residuals = df_test.flux - planck_cgs(mean_A, df_test.loglam, ci_T[2])
-
-	plot(df_test.loglam, y1_residuals,
-		label = "Lower Bound Residuals",
-		xlabel = "log(λ) Å",
-		ylabel = "Data - Model [10^-17 erg/cm²/s/Å]",
-		title = "Model vs. Data Residual Plot",
-		alpha = 1,
-	    markersize=3,
-	    linewidth=1,
-		markerstrokecolor = :transparent,
-		markerstrokewidth = 0,
-	    legend=:topleft)
-	plot!(df_test.loglam, y2_residuals,
-		label = "Upper Bound Residuals",
-		alpha = .5,
-	    markersize=3,
-	    linewidth=1,
-		markerstrokecolor = :transparent,
-		markerstrokewidth = 0)
-end
-
-# ╔═╡ 0d09493b-f932-465c-8355-244efe20daae
-trapezoid_integrate(df_test.loglam, df_test.flux)
 
 # ╔═╡ dc67d6f3-794b-44bd-8db9-c8a7067d8355
 begin
@@ -833,36 +910,6 @@ begin
 end
 
 
-# ╔═╡ c0802661-fbba-4b84-9293-52cd73bf6679
-begin
-	fit_results = optimize(penalty_planck_fit, [1., 15000, 100])
-	A_fit, T_fit, C_fit = fit_results.minimizer
-	χ²_train = log_results.minimum
-end
-
-# ╔═╡ 39cef286-62b2-46b5-a7cc-39f23297ba1b
-begin
-	model(λ) = planck_cgs(A_fit, λ, T_fit)	
-	quadgk(λ -> model(λ), minimum(df_test.loglam), maximum(df_test.loglam))
-end
-
-# ╔═╡ 5e311ae7-acd9-4b54-a798-8f808a159df5
-begin
-	best_fit = planck_cgs(A_fit, df_train.loglam, T_fit)
-	residual = df_train.flux - best_fit
-	scatter(10 .^ df_train.loglam, df_train.flux)
-	plot!(10 .^ df_train.loglam, best_fit)
-end
-
-# ╔═╡ 80470ef1-96e1-4b9b-b420-4d6e3a97c3a1
-plot(10 .^ df_train.loglam, residual)
-
-# ╔═╡ 83df8391-b832-4c19-b607-d6a671fa547c
-T_fit
-
-# ╔═╡ 3ec5adef-b5de-4643-a5ad-fe71d5a58780
-A_fit
-
 # ╔═╡ 5b9762fe-a94e-40bb-8d73-be7369427336
 begin
 	log_χ²_test = sum(df_test.ivar .* (df_test.flux .- log_model).^2 )/ (length(df_test.flux) - 2)
@@ -895,6 +942,224 @@ begin
 	markersize=3,
 	linewidth=1,
 	legend=:topright)
+end
+
+# ╔═╡ b5c71318-4d01-4a14-88bd-a95d40c624ec
+begin
+	logxmin = minimum(df_test.loglam)
+	logxmax = maximum(df_test.loglam)
+end
+
+# ╔═╡ b205f32c-566f-4dc0-9cbd-5594aac093cd
+begin
+	md"""
+	X-axis limits \
+	xmin: $(@bind Planck_x_min Slider(logxmin:.01:logxmax, default=logxmin))
+	xmax: $(@bind Planck_x_max Slider(logxmin:.01:logxmax, default=logxmax))
+	
+	weight: $(@bind user_weight Slider(1:10, default = 1))
+	"""
+end
+
+# ╔═╡ 85923ffd-7446-4711-bc70-76e34da96a72
+begin
+	# normalize the estimated spectrum to 10^(-17)
+	# loss with penalty function
+	function planck_cgs(A, λ, T)
+		local cm_λ = (10 .^ λ) .* 10^(-8)
+		Bλ = (A.*h.*c^2 ./ (cm_λ.^5)) .* (ℯ .^ ((h.*c)./(k .* cm_λ .* T)) .- 1).^(-1)
+		return Bλ
+	end
+	
+	function planck_fit(x::AbstractVector)
+		model = planck_cgs(x[1], df_train.loglam, x[2])
+
+		χ_squared = df_train.ivar .* (df_train.flux - model) .^ 2
+		return sum(χ_squared) / (length(df_train.loglam) - 2)
+	end
+
+	function T_penalty(T, Tmin, Tmax)
+		weight = user_weight
+		if T < Tmin; return (T-Tmin)^2 * weight
+		elseif T > Tmax; return (T-Tmax)^2 * weight
+		else return 0 end
+	end
+
+	function penalty_planck_fit(x::AbstractVector)
+		model = planck_cgs(x[1], df_train.loglam, x[2])
+
+		χ_squared = df_train.ivar .* (df_train.flux - model) .^ 2 .+ T_penalty(x[2], temperature_bounds[1], temperature_bounds[2])
+		return sum(χ_squared) / (length(df_train.loglam) - 2)
+	end
+	md"""Some more complex loss functions. Potentially add one about integral loss?"""
+end
+
+# ╔═╡ c0802661-fbba-4b84-9293-52cd73bf6679
+begin
+	fit_results = optimize(penalty_planck_fit, [1., 15000, 100])
+	A_fit, T_fit, C_fit = fit_results.minimizer
+	χ²_train = log_results.minimum
+end
+
+# ╔═╡ 5e311ae7-acd9-4b54-a798-8f808a159df5
+begin
+	best_fit = planck_cgs(A_fit, df_test.loglam, T_fit)
+	residual = df_test.flux - best_fit
+	
+	p = scatter(df_test.loglam, df_test.flux,
+		# yscale=:log10,  # Log scale for y-axis
+		xlims = (Planck_x_min, Planck_x_max),
+	    xlabel="Log(λ) [Å]",
+	    ylabel="[10^-17 erg/cm²/s/Å]",
+	    title="Planck Optimized with Spectral Features",
+	    label="Test Spectrum",
+		color = "gray",
+		alpha = .5,
+	    markersize=2,
+	    linewidth=.1,
+		markerstrokecolor = :transparent,
+		markerstrokewidth = 0,
+	    legend=:topleft)
+	
+	plot!(p, df_test.loglam, best_fit, 
+		# xscale=:log10,
+	    # yscale=:log10,  # Log scale for y-axis
+	    label="Planck Model: T= $(Int(trunc(T_fit))) K",
+	    markersize=3,
+		color="red",
+	    linewidth=2,
+		linestyle=:dash,
+	    legend=:topright)
+
+	if spectral_features_amount == "Some"
+		
+		plot_spectral_features = true
+		spectral_type = spectral_features["$(stellar_classification[1])"]
+		
+	elseif spectral_features_amount == "Most"
+		
+		plot_spectral_features = true
+		spectral_type = spectral_features_verbose["$(stellar_classification[1])"]
+	else 
+		plot_spectral_features = false
+
+	end
+
+	if plot_spectral_features
+		for (name, λ, color) in spectral_type
+			vline!(p, [log10.(λ)],
+			color = color,
+			label = ""
+			#label = "$(spectral_type[i][1]) - $λ Å"
+			)
+			annotate!(p, log10.(λ)+0.01, maximum(df_train.flux) * 0.75,
+			          text(name, 8, color))
+		end
+	end
+
+	plot(p)
+end
+
+# ╔═╡ e162283d-fe0b-458a-82a0-9b1ed5b7d660
+begin
+	md"""
+	Spectral features to plot: $(@bind mcmc_spectral_features_amount Select(["None", "Some", "Most"]))
+	
+	X-axis limits \
+	xmin: $(@bind MCMC_x_min Slider(logxmin:.01:logxmax, default=logxmin))
+	xmax: $(@bind MCMC_x_max Slider(logxmin:.01:logxmax, default=logxmax))
+	"""
+end
+
+# ╔═╡ b71ed739-d026-4fa5-8148-3ac19bcc3ff6
+begin	
+	logλ_range = LinRange(logxmin, logxmax, 5000)
+	Åλ_range   = 10 .^ logλ_range
+	
+	y1 = planck_cgs(mean_A, logλ_range, ci_T[1])
+	y2 = planck_cgs(mean_A, logλ_range, ci_T[2])
+	
+	mcmc_p = scatter(df_test.loglam, df_test.flux,  
+	    # xscale=:log10,  # Log scale for x-axis 
+	    xlabel="Log(λ) [Å]", 
+		xlim = (MCMC_x_min, MCMC_x_max),
+	    ylabel="[10^-17 erg/cm²/s/Å]",
+	    title="MCMC Blackbody Spectrum",
+	    label="Observed Spectrum",
+		color = "gray",
+		alpha = .5,
+	    markersize=2,
+	    linewidth=.1,
+		markerstrokecolor = :transparent,
+		markerstrokewidth = 0,
+	    legend=:topright)
+	
+	plot!(mcmc_p, logλ_range, y1,
+		label = "T Confidence Band", 
+		fillrange = y2,
+		fillalpha = .35)
+
+	plot!(mcmc_p, logλ_range, y1,
+		label = "T Lower Bound, T=$(Int(trunc(ci_T[1])))",
+		color = :red)
+	
+	plot!(mcmc_p, logλ_range, y2,
+		label = "T Upper Bound, T=$(Int(trunc(ci_T[2])))",
+		color = :teal )
+
+	if mcmc_spectral_features_amount == "Some"
+		
+		mcmc_plot_spectral_features = true
+		mcmc_spectral_type = spectral_features["$(stellar_classification[1])"]
+		
+	elseif mcmc_spectral_features_amount == "Most"
+		
+		mcmc_plot_spectral_features = true
+		mcmc_spectral_type = spectral_features_verbose["$(stellar_classification[1])"]
+	else 
+		mcmc_plot_spectral_features = false
+
+	end
+
+	if mcmc_plot_spectral_features
+		for (name, λ, color) in mcmc_spectral_type
+			vline!(mcmc_p, [log10.(λ)],
+			color = color,
+			label = ""
+			#label = "$(spectral_type[i][1]) - $λ Å"
+			)
+			annotate!(mcmc_p, log10.(λ)+0.01, maximum(df_train.flux) * 0.75,
+			          text(name, 8, color))
+		end
+	end
+
+	plot(mcmc_p)
+end
+
+# ╔═╡ e84c8754-723c-4887-b73e-5997e0789c98
+begin
+	y1_residuals = df_test.flux - planck_cgs(mean_A, df_test.loglam, ci_T[1])
+	y2_residuals = df_test.flux - planck_cgs(mean_A, df_test.loglam, ci_T[2])
+
+	plot(df_test.loglam, y1_residuals,
+		label = "Lower Bound Residuals",
+		xlabel = "log(λ) Å",
+		xlim = (MCMC_x_min, MCMC_x_max),
+		ylabel = "Data - MCMC Model [10^-17 erg/cm²/s/Å]",
+		title = "Model vs. Data Residual Plot",
+		alpha = 1,
+	    markersize=3,
+	    linewidth=1,
+		markerstrokecolor = :transparent,
+		markerstrokewidth = 0,
+	    legend=:topright)
+	plot!(df_test.loglam, y2_residuals,
+		label = "Upper Bound Residuals",
+		alpha = .5,
+	    markersize=3,
+	    linewidth=1,
+		markerstrokecolor = :transparent,
+		markerstrokewidth = 0)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -3688,53 +3953,56 @@ version = "1.4.1+2"
 # ╟─3238d955-c92a-4981-8493-ffc1b66c4840
 # ╟─fb1a5aee-507e-4f35-b034-ecf3826a2209
 # ╟─ac9b44d4-3c48-4c11-97cc-a3d55456b0a1
-# ╠═8e039816-a06a-4f79-bf77-d1ea7f60d3f2
+# ╟─8e039816-a06a-4f79-bf77-d1ea7f60d3f2
 # ╟─c559c08f-48ff-44c2-8ea7-801c76c71027
 # ╟─cc8ee21b-4cf6-4236-b905-d8ce4ef0caba
 # ╟─e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
 # ╟─0063c9f0-19ab-44f3-ae1c-1c30784b8741
+# ╟─0ec5e8bb-08cb-4dae-9bb8-ed18fbe83a23
+# ╟─c3d5c8c4-e3b0-44cc-9119-0e992b80ce46
+# ╟─439ddb48-4a8d-4d84-b105-2b575261297f
+# ╟─efa7c095-a3f4-4936-83a6-b7237ab16fe5
+# ╟─5dec2201-0ba7-458b-bc5d-7b08917abb29
+# ╟─5e311ae7-acd9-4b54-a798-8f808a159df5
+# ╟─b205f32c-566f-4dc0-9cbd-5594aac093cd
+# ╟─8f3e97dc-2653-4dac-9aef-aeec25560519
 # ╟─775e5751-a608-4632-be62-cc877deb056b
 # ╟─a51abe1b-3369-4660-8acf-c26dbe79bfc5
 # ╟─9afe3e82-e6b9-40ea-9ccd-50357195e89b
 # ╠═81b10366-5e8c-417f-a8bf-465c0de32442
 # ╟─addcdacb-51ed-4ff1-af38-7fdc762d394b
-# ╟─dbd6c860-9e27-48cd-9944-c992d7ab33f4
+# ╠═dbd6c860-9e27-48cd-9944-c992d7ab33f4
 # ╟─f037c8b2-e647-4bb9-ba8e-1f8b5000de7d
 # ╟─4749c595-3ef9-43f8-a0c2-d8c510cfb002
 # ╟─976520c3-4e2d-4784-80c4-f5cb757ae6dd
-# ╠═b71ed739-d026-4fa5-8148-3ac19bcc3ff6
-# ╠═ad908e7d-8b89-497f-86a7-f243b0875b7e
-# ╠═747ac7f3-0bc9-4acb-a686-599f2d3b5ea7
-# ╠═b6b03615-a858-434c-bcb6-fc051ff16f83
+# ╟─b71ed739-d026-4fa5-8148-3ac19bcc3ff6
+# ╟─e162283d-fe0b-458a-82a0-9b1ed5b7d660
 # ╟─e84c8754-723c-4887-b73e-5997e0789c98
 # ╟─d9d69224-43cc-4ff6-b61c-6df54ec4d8ad
-# ╟─dbbe8b29-445d-4595-9bcb-714184123622
-# ╠═88193288-e2d0-4413-81c6-4b3239bc08c6
-# ╠═85923ffd-7446-4711-bc70-76e34da96a72
-# ╠═39cef286-62b2-46b5-a7cc-39f23297ba1b
-# ╠═0d09493b-f932-465c-8355-244efe20daae
-# ╠═c0802661-fbba-4b84-9293-52cd73bf6679
-# ╠═5e311ae7-acd9-4b54-a798-8f808a159df5
-# ╠═80470ef1-96e1-4b9b-b420-4d6e3a97c3a1
-# ╠═83df8391-b832-4c19-b607-d6a671fa547c
-# ╠═3ec5adef-b5de-4643-a5ad-fe71d5a58780
+# ╟─e4877e8f-a172-4346-9422-dd1005a4f71b
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╟─de71a944-9d7b-4378-851c-0578cfae4c31
+# ╠═85923ffd-7446-4711-bc70-76e34da96a72
+# ╠═c0802661-fbba-4b84-9293-52cd73bf6679
 # ╠═dc67d6f3-794b-44bd-8db9-c8a7067d8355
 # ╠═6532f90e-22fb-44e3-9946-1936f801361f
 # ╟─5b9762fe-a94e-40bb-8d73-be7369427336
 # ╟─ded89e4a-240e-4665-aa9e-8a86d555f6e3
 # ╟─ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
-# ╟─a8cf807f-79ee-4c9d-95dd-930b243e491c
+# ╟─2a314b1c-6619-4571-908f-3e507cb4899e
+# ╟─5f723f4c-5491-4229-abd0-776a9e6fd0ae
+# ╟─36dffded-3d67-4dfb-a44e-f834cf40f6e5
 # ╟─c6a532b4-4430-41d0-91ac-07f52637342e
 # ╟─48027e84-2ba4-4206-b775-e71d0cc4b790
 # ╠═7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
 # ╠═29485c7e-0b1b-4f36-bd5b-0391098389eb
+# ╠═b5c71318-4d01-4a14-88bd-a95d40c624ec
+# ╠═96144435-2edc-4ff4-a41a-22e97641106d
 # ╟─d44802f5-c8d1-4678-b34e-92e48b67a90b
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
 # ╠═1ad89925-9707-497f-b682-9f509910d361
 # ╟─d40536f8-eca0-4780-9315-347238ce27a4
-# ╟─740e97fd-ec22-4999-a925-0433eba2a4f6
+# ╠═740e97fd-ec22-4999-a925-0433eba2a4f6
 # ╟─2f31b61c-9d20-406e-8306-97b76ede26d5
 # ╟─4179ef92-8dee-42d0-acc1-fc5a4b3b73dc
 # ╟─8394e0d5-fb2b-4402-a6e5-ab00bbd41dfc
