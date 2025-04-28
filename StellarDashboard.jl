@@ -153,7 +153,7 @@ $\ln(B(λ, T)) ≈ \ln(A) + \frac{hc}{kλT} = \ln(M(λ, T))$
 
 We then use a reduced weighted χ² as the minimizing function
 
-$χ² = \frac{1}{n-2}∑\text{ivar}*(M(λ, T)-F_{\lambda})^2$
+$χ² = \frac{1}{n-2}∑\text{ivar}*(M(λ, T)-f_{\lambda})^2$
 "
 
 # ╔═╡ 0063c9f0-19ab-44f3-ae1c-1c30784b8741
@@ -163,34 +163,55 @@ $\frac{hc}{kλT} ≈ 1: λ \in [10^{3.6}, 10^4] Å\text{, }T \in [2300, 7000] K
 * Does not remove potential spectral features
 * Probably a third reason
 * Patterns in residual plot
-* No error bars??"""
+* No temperature error bars??"""
 
 # ╔═╡ 0ec5e8bb-08cb-4dae-9bb8-ed18fbe83a23
-md"""# More Nonlinear Optimization 
+md"""# Bootstrapped Nonlinear Optimization 
 
 ## Model Structure
 
-Here, we are using
+Here, we are using bootstrapping and the full $B_{λ}(λ, T)$ equation to model the effective temperature.
 
-Loss:
+### In Painful Detail...
+As the true value of the flux at each data point is not known we assume:
 
-$∑\text{ivar}*(B(λ, T) - F_{λ})^2 + T\_penalty$
+$f_{λ}^{obs} \sim \mathcal{N}(f_{λ}^{true}, σ_{λ})$
+
+Implying that the observed value is gaussian around the true value. We construct a simulated spectrum, $f^{sim}_{j} = \{f_{λ}^{obs} : λ ∈ Λ\}$, where $Λ$ is the eBOSS spectrograph grid. Using the following function, we apply nonlinear optimization to estimate the temperature of the simulated spectrum. By chosing a statistically significant $j$, I.e. $j>30$, we can perform analysis on the teperature distribution.
+
+$T_j^{*} = \text{arg}\min_{T} h_j(λ, T)$
+$h_j(λ, T) = \sum_{λ}\text{ivar(λ)}*(B_{λ}(λ,T)-f_{λ,j}^{sim})^2 + T_{penalty}(w, T, ⋯)$
 
 Penalty:
 
-$\text{T\_penalty}(w, T, T_{\text{min}}, T_{\text{max}}) =
+$T_{penalty}(w, T, T_{\text{min}}, T_{\text{max}}) =
 \begin{cases}
 (T - T_{\text{min}})^2 \cdot w, & \text{if } T < T_{\text{min}} \\
 (T - T_{\text{max}})^2 \cdot w, & \text{if } T > T_{\text{max}} \\
 0, & \text{otherwise}
 \end{cases}$
 
-Here we also plot notable spectral features, which help inform decisions about classification.
+Where $T_{min}$ and $T_{max}$ are user provided inputs by selecting the spectral classification from the dropdown menu.¹
+
+We then construct 
+
+$T^{*} = \{T^{*}_{1}, T^{*}_{2}, ⋯, T^{*}_{j}\}$
+
+At this point, we can do standard gaussian statistics on $T^{*}$.
+
+Here we also provide plotting of notable spectral features, which help inform decisions about classification.
+"""
+
+# ╔═╡ efa7c095-a3f4-4936-83a6-b7237ab16fe5
+md"""
+Select classification: $(@bind stellar_classification Select(["O Type: T ~ 30,000 K", "B Type: T ~ 10,000 K ", "A Type: T ~ 7,300 K", "F Type: T ~ 6,000 K", "G Type: T ~ 5,300 K", "K Type: T ~ 3,900 K", "M Type: T ~ 2,300 K"])) \
+
+Spectral features to plot: $(@bind spectral_features_amount Select(["None", "Some", "Most"]))
 """
 
 # ╔═╡ 439ddb48-4a8d-4d84-b105-2b575261297f
-md"""
-## Key Spectral Features in Stellar Classification
+ if spectral_features_amount != "None"; md"""
+### Key Spectral Features in Stellar Classification
 
 | **Feature**        | **Wavelength [Å]**     | **Sensitive To**             | **Stellar Types** | **Absorption/Emission**    | **Notes** |
 |--------------------|------------------------|-------------------------------|-------------------|-----------------------------|-----------|
@@ -202,22 +223,13 @@ md"""
 | **TiO Bands**       | >7000 (broad regions)    | Temperature                   | M                 | Absorption only              | Dominant in M stars; strong molecular absorption, defining for late types |
 
 *source: https://physics.nist.gov/PhysRefData/ASD/lines_form.html*
-"""
-
-# ╔═╡ efa7c095-a3f4-4936-83a6-b7237ab16fe5
-md"""
-Select classification: $(@bind stellar_classification Select(["O Type: T ~ 30,000 K", "B Type: T ~ 10,000 K ", "A Type: T ~ 7,300 K", "F Type: T ~ 6,000 K", "G Type: T ~ 5,300 K", "K Type: T ~ 3,900 K", "M Type: T ~ 2,300 K"])) \
-
-Spectral features to plot: $(@bind spectral_features_amount Select(["None", "Some", "Most"]))
-"""
-
-# ╔═╡ c7396256-993f-4a27-b40b-df61cc5f6cd6
-md"""*If temperature is at the boundary of the temperature, try a different model* """
+""" end
 
 # ╔═╡ 8f3e97dc-2653-4dac-9aef-aeec25560519
 md"""## Model Limitations 
-* Does not provide error bars
-* Very sensitive to weighting function"""
+* Very sensitive to weighting function
+* Does not fit spectral features
+* Does not classify stars above 50,000 K"""
 
 # ╔═╡ 775e5751-a608-4632-be62-cc877deb056b
 md"""# Bayesian MCMC
@@ -268,6 +280,7 @@ md"""
 * Redshift fitting for spectral features
 * Better / adaptive colors for plots
 * Integral of Radiance as penalty function
+* Improved MCMC efficiency and model verification
 * More error analysis
 * Better segmentation & removing error messages on boot-up
 """
@@ -277,6 +290,31 @@ md""" # All the Extra Junk"""
 
 # ╔═╡ de71a944-9d7b-4378-851c-0578cfae4c31
 md" ### Optimizing Functions"
+
+# ╔═╡ 1db75a03-ff83-4e31-ac79-6423f57c93a8
+begin
+	function confidence_interval(data::Vector{T}, confidence_level::Float64) where T
+    # Sample size, mean, and standard deviation
+    n = length(data)
+    mean_data = mean(data)
+    std_dev = std(data)
+
+    # Critical value (z for large samples, t for small samples)
+    if n > 30
+        z_value = quantile(Normal(0, 1), 1 - (1 - confidence_level) / 2)
+        margin_of_error = z_value * std_dev / sqrt(n)
+    else
+        t_value = quantile(TDist(n - 1), 1 - (1 - confidence_level) / 2)
+        margin_of_error = t_value * std_dev / sqrt(n)
+    end
+
+    # Confidence interval
+    lower_bound = mean_data - margin_of_error
+    upper_bound = mean_data + margin_of_error
+
+    return mean_data, margin_of_error
+	end
+end
 
 # ╔═╡ ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
 md"### Variable Defs to Keep it Clean"
@@ -413,6 +451,7 @@ begin
 end
 
 # ╔═╡ 96144435-2edc-4ff4-a41a-22e97641106d
+begin
 	stellar_summary_matrix = [md"""### 🌌 **O-type Stars**
 - **Color:** Blue
 - **Temperature:** 30,000–50,000 K
@@ -448,7 +487,9 @@ md"""### 🔷 **B-type Stars**
 - **Temperature:** <3,700 K
 - **Spectral Features:** Molecule bands (TiO, VO), weak H lines
 - **Notes:** Most common stars in the galaxy, including red dwarfs"""
-	];
+	]
+	md"""Stellar Matrix Grid"""
+end
 
 # ╔═╡ 5dec2201-0ba7-458b-bc5d-7b08917abb29
 begin
@@ -458,7 +499,7 @@ end
 
 # ╔═╡ 36dffded-3d67-4dfb-a44e-f834cf40f6e5
 begin
-	stellar_matrix = [[30000, 100000],
+	stellar_matrix = [[30000, 50000],
 					[10000, 30000],
 					[7300, 10000],
 					[6000, 7300],
@@ -474,7 +515,7 @@ end
 @model function bayesian_planck(df)
     # Priors
     A ~ LogNormal(0, 1)                      # Amplitude (positive)
-    T ~ Normal((temperature_bounds[1] + temperature_bounds[2])/2, (temperature_bounds[2] - temperature_bounds[1])/2)  # Temperature with soft prior
+    T ~ Truncated(Normal((temperature_bounds[1] + temperature_bounds[2])/2, (temperature_bounds[2] - temperature_bounds[1])/2), temperature_bounds[1], temperature_bounds[2])  # Temperature with soft prior
 
     for i in 1:length(df.loglam)
         λ_cm = 10.0^df.loglam[i] * 1e-8      # Convert log₁₀(Å) → cm
@@ -942,15 +983,22 @@ end
 begin
 	logxmin = minimum(df_test.loglam)
 	logxmax = maximum(df_test.loglam)
+	md"""min-max of wavelength grid"""
 end
 
 # ╔═╡ b205f32c-566f-4dc0-9cbd-5594aac093cd
 begin
 	md"""
+	Select Viewing Plot: $(@bind bootstrapped_plot_view Select(["Spectrum", "Residuals", "Temperature"]))
+	
+	Number of boostrapping iterations: $(@bind num_iterations_ confirm(TextField(default="50")))  \
+	Confidence Interval: $(@bind conf_level confirm(TextField(default=".99")))
+	
 	X-axis limits \
 	xmin: $(@bind Planck_x_min Slider(logxmin:.01:logxmax, default=logxmin))
 	xmax: $(@bind Planck_x_max Slider(logxmin:.01:logxmax, default=logxmax))
-	
+
+	Weight \
 	weight: $(@bind user_weight Slider(1:10, default = 1))
 	"""
 end
@@ -985,6 +1033,12 @@ begin
 		χ_squared = df_train.ivar .* (df_train.flux - model) .^ 2 .+ T_penalty(x[2], temperature_bounds[1], temperature_bounds[2])
 		return sum(χ_squared) / (length(df_train.loglam) - 2)
 	end
+	function penalty_planck_fit(x::AbstractVector, flux::AbstractVector, error::AbstractVector)
+		model = planck_cgs(x[1], df_train.loglam, x[2])
+
+		χ_squared = error.^(-2) .* (flux - model) .^ 2 .+ T_penalty(x[2], temperature_bounds[1], temperature_bounds[2])
+		return sum(χ_squared) / (length(df_train.loglam) - 2)
+	end
 	md"""Some more complex loss functions. Potentially add one about integral loss?"""
 end
 
@@ -1002,91 +1056,53 @@ begin
 	fit_results = optimize(penalty_planck_fit, [1., (temperature_bounds[1]+temperature_bounds[2])/2, 100])
 	A_fit, T_fit, C_fit = fit_results.minimizer
 	χ²_train = log_results.minimum
+	md"""χ² nonlinear"""
 end
 
-# ╔═╡ 5e311ae7-acd9-4b54-a798-8f808a159df5
+# ╔═╡ f7046d45-040b-4fba-a5fd-b31a6d79803c
 begin
-	best_fit = planck_cgs(A_fit, df_test.loglam, T_fit)
-	residual = df_test.flux - best_fit
+	num_iterations = Int(trunc(parse(Float64, num_iterations_)))
 	
-	p = scatter(df_test.loglam, df_test.flux,
-		# yscale=:log10,  # Log scale for y-axis
-		xlims = (Planck_x_min, Planck_x_max),
-	    xlabel="Log(λ) [Å]",
-	    ylabel="[10^-17 erg/cm²/s/Å]",
-	    title="Planck Optimized with Spectral Features",
-	    label="Test Spectrum",
-		color = "gray",
-		alpha = .5,
-	    markersize=2,
-	    linewidth=.1,
-		markerstrokecolor = :transparent,
-		markerstrokewidth = 0,
-	    legend=:topleft)
+	sampled_As = Vector{Float64}(undef, num_iterations)
+	sampled_Temps = Vector{Float64}(undef, num_iterations)
+	sampled_Cs = Vector{Float64}(undef, num_iterations)
 	
-	plot!(p, df_test.loglam, best_fit, 
-		# xscale=:log10,
-	    # yscale=:log10,  # Log scale for y-axis
-	    label="Planck Model: T= $(Int(trunc(T_fit))) K",
-	    markersize=3,
-		color="red",
-	    linewidth=2,
-		linestyle=:dash,
-	    legend=:topright)
+	df_σ = df_train.ivar .^(-.5)
+	flux_normals =  [Normal(df_train.flux[j], df_σ[j]) for j in 1:length(df_σ)]
 
-	if spectral_features_amount == "Some"
+	@threads for i in 1:num_iterations
+		flux_sampled = [rand(d) for d in flux_normals]
 		
-		plot_spectral_features = true
-		spectral_type = spectral_features["$(stellar_classification[1])"]
+		iterx = [1., (temperature_bounds[1]+temperature_bounds[2])/2, 100]
+		sampled_penalty_fit = θ -> penalty_planck_fit(θ, flux_sampled, df_σ)
+		sampled_fit  = optimize(sampled_penalty_fit, iterx)
 		
-	elseif spectral_features_amount == "Most"
-		
-		plot_spectral_features = true
-		spectral_type = spectral_features_verbose["$(stellar_classification[1])"]
-	else 
-		plot_spectral_features = false
-
+		sampled_As[i] = sampled_fit.minimizer[1]
+    	sampled_Temps[i] = sampled_fit.minimizer[2]
+    	sampled_Cs[i] = sampled_fit.minimizer[3]
 	end
+	sampled_params = DataFrame(A = sampled_As, Temp = sampled_Temps, C = sampled_Cs)
+	md"""bootstrapper"""
+end
 
-	if plot_spectral_features
-		for (name, λ, color) in spectral_type
-			vline!(p, [log10.(λ)],
-			color = color,
-			label = ""
-			#label = "$(spectral_type[i][1]) - $λ Å"
-			)
-			annotate!(p, log10.(λ)+0.01, maximum(df_train.flux) * 0.75,
-			          text(name, 8, color))
-		end
+# ╔═╡ d5908959-fbb0-40ed-89ff-f33cbfc7af47
+begin
+	conf_param = parse(Float64, conf_level)
+	if conf_param >= 1 || conf_param <= 0
+		conf_param = .95
 	end
-
-	plot(p)
+	T_boot, T_std = confidence_interval(sampled_params.Temp, conf_param)
+	A_boot, A_std = confidence_interval(sampled_params.A, conf_param)
+	md"""bootstrapping Samples """
 end
 
 # ╔═╡ 51ae2591-5788-4db9-98f7-23ea4bfa9bd6
 begin
-	nonlinear_model = planck_cgs(A_fit, df_test.loglam, T_fit)
-	nonlinear_χ     = sum((MCMC_model .- df_test.flux).^2) ./ (length(df_test.flux) -2)
+	nonlinear_model = planck_cgs(A_fit, df_test.loglam, T_boot)
+	nonlinear_χ     = sum((nonlinear_model .- df_test.flux).^2) ./ (length(df_test.flux) -2)
 	md"""
-	Effective Temperature: $(Int(trunc(T_fit))) K \
+	Effective Temperature: $(Int(trunc(T_boot))) ± $(Int(trunc(T_std))) K \
 	test set χ²: $(round(nonlinear_χ, digits=3))  """
-end
-
-# ╔═╡ 2bb8134d-6db1-4b39-af07-94977d66b298
-begin
-	nonlinear_residuals = df_test.flux - planck_cgs(A_fit, df_test.loglam, T_fit)
-	plot(df_test.loglam, nonlinear_residuals,
-		label = "Nonlinear Residuals",
-		xlabel = "log(λ) Å",
-		xlim = (Planck_x_min, Planck_x_max),
-		ylabel = "[10^-17 erg/cm²/s/Å]",
-		title = "Model vs. Data Residual Plot",
-		alpha = 1,
-	    markersize=3,
-	    linewidth=1,
-		markerstrokecolor = :transparent,
-		markerstrokewidth = 0,
-	    legend=:topright)
 end
 
 # ╔═╡ 6a970c7d-4d25-44d5-9123-ab60fd5b1b10
@@ -1111,11 +1127,126 @@ begin
 	"""
 end
 
-# ╔═╡ b71ed739-d026-4fa5-8148-3ac19bcc3ff6
-begin	
+# ╔═╡ e84c8754-723c-4887-b73e-5997e0789c98
+begin
+	y1_residuals = df_test.flux - planck_cgs(mean_A, df_test.loglam, ci_T[1])
+	y2_residuals = df_test.flux - planck_cgs(mean_A, df_test.loglam, ci_T[2])
+
+	plot(df_test.loglam, y1_residuals,
+		label = "Lower Bound Residuals",
+		xlabel = "log(λ) Å",
+		xlim = (MCMC_x_min, MCMC_x_max),
+		ylabel = "Data - MCMC Model [10^-17 erg/cm²/s/Å]",
+		title = "Model vs. Data Residual Plot",
+		alpha = 1,
+	    markersize=3,
+	    linewidth=1,
+		markerstrokecolor = :transparent,
+		markerstrokewidth = 0,
+	    legend=:topright)
+	plot!(df_test.loglam, y2_residuals,
+		label = "Upper Bound Residuals",
+		alpha = .5,
+	    markersize=3,
+	    linewidth=1,
+		markerstrokecolor = :transparent,
+		markerstrokewidth = 0)
+end
+
+# ╔═╡ 79dc5f77-5b6c-4687-9c18-a50c593ca267
+begin
 	logλ_range = LinRange(logxmin, logxmax, 5000)
 	Åλ_range   = 10 .^ logλ_range
+end
+
+# ╔═╡ 5e311ae7-acd9-4b54-a798-8f808a159df5
+begin
+	boot_lower = planck_cgs(A_boot, logλ_range, T_boot-T_std)
+	boot_upper = planck_cgs(A_boot, logλ_range, T_boot+T_std)
 	
+	# lower_residual = df_test.flux .- boot_lower
+	# upper_residual = df_test.flux .- boot_upper
+	if bootstrapped_plot_view == "Spectrum"
+		p = scatter(df_test.loglam, df_test.flux,
+			# yscale=:log10,  # Log scale for y-axis
+			xlims = (Planck_x_min, Planck_x_max),
+		    xlabel="Log(λ) [Å]",
+		    ylabel="[10^-17 erg/cm²/s/Å]",
+		    title="Planck Optimized with Spectral Features",
+		    label="Test Spectrum",
+			color = "gray",
+			alpha = .5,
+		    markersize=2,
+		    linewidth=.1,
+			markerstrokecolor = :transparent,
+			markerstrokewidth = 0,
+		    legend=:topright)
+	
+		plot!(p, logλ_range, boot_lower,
+			label = "T Confidence Band", 
+			fillrange = boot_upper,
+			fillalpha = .35)
+	
+		plot!(p, logλ_range, boot_lower,
+			label = "T ¹σ Lower Bound, T=$(Int(trunc(T_boot - T_std)))",
+			color = :red)
+		
+		plot!(p, logλ_range, boot_upper,
+			label = "T ¹σ Upper Bound, T=$(Int(trunc(T_boot + T_std)))",
+			color = :teal )
+
+		if spectral_features_amount == "Some"
+			
+			plot_spectral_features = true
+			spectral_type = spectral_features["$(stellar_classification[1])"]
+			
+		elseif spectral_features_amount == "Most"
+			
+			plot_spectral_features = true
+			spectral_type = spectral_features_verbose["$(stellar_classification[1])"]
+		else 
+			plot_spectral_features = false
+	
+		end
+	
+		if plot_spectral_features
+			for (name, λ, color) in spectral_type
+				vline!(p, [log10.(λ)],
+				color = color,
+				label = ""
+				#label = "$(spectral_type[i][1]) - $λ Å"
+				)
+				annotate!(p, log10.(λ)+0.01, maximum(df_train.flux) * 0.75,
+				          text(name, 8, color))
+			end
+		end
+	
+		plot(p)
+	elseif bootstrapped_plot_view == "Residuals"
+		nonlinear_residuals = df_test.flux - planck_cgs(A_fit, df_test.loglam, T_fit)
+		plot(df_test.loglam, nonlinear_residuals,
+			label = "Nonlinear Residuals",
+			xlabel = "log(λ) Å",
+			xlim = (Planck_x_min, Planck_x_max),
+			ylabel = "[10^-17 erg/cm²/s/Å]",
+			title = "Model vs. Data Residual Plot",
+			alpha = 1,
+		    markersize=3,
+		    linewidth=1,
+			markerstrokecolor = :transparent,
+			markerstrokewidth = 0,
+		    legend=:topright)
+	else 
+		histogram(sampled_params.Temp, 
+			bins = 20,
+			xlabel = "Temperature [K]",
+			label  = "Temp",
+			title = "Temperature Histogram of $num_iterations Samples")
+	end
+end
+
+# ╔═╡ b71ed739-d026-4fa5-8148-3ac19bcc3ff6
+begin	
 	y1 = planck_cgs(mean_A, logλ_range, ci_T[1])
 	y2 = planck_cgs(mean_A, logλ_range, ci_T[2])
 	
@@ -1174,32 +1305,6 @@ begin
 	end
 
 	plot(mcmc_p)
-end
-
-# ╔═╡ e84c8754-723c-4887-b73e-5997e0789c98
-begin
-	y1_residuals = df_test.flux - planck_cgs(mean_A, df_test.loglam, ci_T[1])
-	y2_residuals = df_test.flux - planck_cgs(mean_A, df_test.loglam, ci_T[2])
-
-	plot(df_test.loglam, y1_residuals,
-		label = "Lower Bound Residuals",
-		xlabel = "log(λ) Å",
-		xlim = (MCMC_x_min, MCMC_x_max),
-		ylabel = "Data - MCMC Model [10^-17 erg/cm²/s/Å]",
-		title = "Model vs. Data Residual Plot",
-		alpha = 1,
-	    markersize=3,
-	    linewidth=1,
-		markerstrokecolor = :transparent,
-		markerstrokewidth = 0,
-	    legend=:topright)
-	plot!(df_test.loglam, y2_residuals,
-		label = "Upper Bound Residuals",
-		alpha = .5,
-	    markersize=3,
-	    linewidth=1,
-		markerstrokecolor = :transparent,
-		markerstrokewidth = 0)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -3997,14 +4102,12 @@ version = "1.4.1+2"
 # ╟─e1fe6eb6-1a0a-46f5-b727-b5b89594ecd8
 # ╟─0063c9f0-19ab-44f3-ae1c-1c30784b8741
 # ╟─0ec5e8bb-08cb-4dae-9bb8-ed18fbe83a23
-# ╟─439ddb48-4a8d-4d84-b105-2b575261297f
 # ╟─efa7c095-a3f4-4936-83a6-b7237ab16fe5
 # ╟─5dec2201-0ba7-458b-bc5d-7b08917abb29
+# ╟─439ddb48-4a8d-4d84-b105-2b575261297f
 # ╟─5e311ae7-acd9-4b54-a798-8f808a159df5
-# ╟─c7396256-993f-4a27-b40b-df61cc5f6cd6
 # ╟─b205f32c-566f-4dc0-9cbd-5594aac093cd
 # ╟─51ae2591-5788-4db9-98f7-23ea4bfa9bd6
-# ╟─2bb8134d-6db1-4b39-af07-94977d66b298
 # ╟─8f3e97dc-2653-4dac-9aef-aeec25560519
 # ╟─775e5751-a608-4632-be62-cc877deb056b
 # ╠═81b10366-5e8c-417f-a8bf-465c0de32442
@@ -4022,22 +4125,26 @@ version = "1.4.1+2"
 # ╟─e4877e8f-a172-4346-9422-dd1005a4f71b
 # ╟─1c89c228-d6e1-4c0e-a9e7-e2c0abe52ab5
 # ╟─de71a944-9d7b-4378-851c-0578cfae4c31
-# ╠═85923ffd-7446-4711-bc70-76e34da96a72
-# ╠═c0802661-fbba-4b84-9293-52cd73bf6679
+# ╟─85923ffd-7446-4711-bc70-76e34da96a72
+# ╟─c0802661-fbba-4b84-9293-52cd73bf6679
 # ╟─dc67d6f3-794b-44bd-8db9-c8a7067d8355
 # ╟─6532f90e-22fb-44e3-9946-1936f801361f
 # ╟─5b9762fe-a94e-40bb-8d73-be7369427336
+# ╟─f7046d45-040b-4fba-a5fd-b31a6d79803c
+# ╟─d5908959-fbb0-40ed-89ff-f33cbfc7af47
 # ╟─ded89e4a-240e-4665-aa9e-8a86d555f6e3
+# ╟─1db75a03-ff83-4e31-ac79-6423f57c93a8
 # ╟─ac49f2f9-bb6c-409f-ad18-9eef93dcc7e1
+# ╟─79dc5f77-5b6c-4687-9c18-a50c593ca267
 # ╟─2a314b1c-6619-4571-908f-3e507cb4899e
 # ╟─5f723f4c-5491-4229-abd0-776a9e6fd0ae
-# ╠═36dffded-3d67-4dfb-a44e-f834cf40f6e5
+# ╟─36dffded-3d67-4dfb-a44e-f834cf40f6e5
 # ╟─c6a532b4-4430-41d0-91ac-07f52637342e
 # ╟─48027e84-2ba4-4206-b775-e71d0cc4b790
 # ╟─7e4e80d8-a45c-42f8-a4ea-d44be7fa1525
-# ╠═29485c7e-0b1b-4f36-bd5b-0391098389eb
-# ╠═b5c71318-4d01-4a14-88bd-a95d40c624ec
-# ╠═96144435-2edc-4ff4-a41a-22e97641106d
+# ╟─29485c7e-0b1b-4f36-bd5b-0391098389eb
+# ╟─b5c71318-4d01-4a14-88bd-a95d40c624ec
+# ╟─96144435-2edc-4ff4-a41a-22e97641106d
 # ╟─d44802f5-c8d1-4678-b34e-92e48b67a90b
 # ╠═0b3b5062-ab99-4a15-8a33-70479c9828bc
 # ╠═1ad89925-9707-497f-b682-9f509910d361
