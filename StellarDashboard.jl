@@ -270,6 +270,7 @@ md"""
 ## Model Limitations
 * Takes a while to run (sometimes +20 mins)
 * Gets caught in Local Minima
+* Doesn't Yield great results when A has a large span
 * Does not sufficiently reduce χ² to warrant computation cost?
 """
 
@@ -893,7 +894,7 @@ end
 begin
 	function log_planck(A, λ::AbstractVector, T::Float64)
 		cm_λ = (10 .^ λ) .* 10^(-8)
-		ln_Bλ   = log(A) .+ ((h*c)./(k .* cm_λ .* T))
+		ln_Bλ   = A .+ ((h*c)./(k .* cm_λ .* T))
 		return ln_Bλ
 	end
 
